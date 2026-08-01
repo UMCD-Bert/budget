@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ons Budget</title>
+<link rel="manifest" href="data:application/json,{%22name%22:%22Ons%20Budget%22,%22display%22:%22standalone%22,%22start_url%22:%22.%22}">
+<style>
+  :root { --green:#2e7d32; --red:#c62828; --bg:#f5f5f5; --card:#fff; --border:#ddd; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Helvetica, Arial, sans-serif; margin:0; background:var(--bg); color:#222; }
+  header { background:#1b5e20; color:#fff; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; }
+  header h1 { font-size:18px; margin:0; }
+  nav { display:flex; background:#fff; border-bottom:1px solid var(--border); }
+  nav button { flex:1; padding:12px; border:none; background:none; font-size:14px; cursor:pointer; }
+  nav button.active { border-bottom:3px solid var(--green); font-weight:bold; color:var(--green); }
+  main { padding:12px; max-width:700px; margin:0 auto; }
+  .rta { background:var(--card); border-radius:8px; padding:12px; margin-bottom:12px; text-align:center; }
+  .rta .amount { font-size:24px; font-weight:bold; }
+  .rta .amount.positive { color:var(--green); }
+  .rta .amount.negative { color:var(--red); }
+  .group { margin-bottom:16px; }
+  .group h3 { margin:0 0 6px 4px; font-size:13px; text-transform:uppercase; color:#777; }
+  .cat-row, .acc-row, .txn-row { background:var(--card); border-radius:6px; padding:10px 12px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }
+  .cat-row { flex-direction:column; align-items:stretch; gap:4px; }
+  .cat-row .top-line { display:flex; justify-content:space-between; align-items:center; }
+  .cat-row .name { flex:1; }
+  .cat-row .avail { font-weight:bold; min-width:70px; text-align:right; }
+  .cat-row .avail.positive { color:var(--green); }
+  .cat-row .avail.negative { color:var(--red); }
+  .cat-row .expected { font-size:11px; color:#888; text-align:right; }
+  .cat-row input.assign { width:70px; text-align:right; border:1px solid var(--border); border-radius:4px; padding:4px; }
+  .fab { position:fixed; bottom:20px; right:20px; background:var(--green); color:#fff; border:none; border-radius:50%; width:52px; height:52px; font-size:26px; box-shadow:0 2px 6px rgba(0,0,0,.3); }
+  .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); align-items:center; justify-content:center; }
+  .modal-bg.open { display:flex; }
+  .modal { background:#fff; border-radius:8px; padding:16px; width:90%; max-width:400px; }
+  .modal label { display:block; font-size:12px; color:#666; margin-top:10px; }
+  .modal input, .modal select { width:100%; padding:8px; border:1px solid var(--border); border-radius:4px; margin-top:2px; }
+  .modal .actions { display:flex; gap:8px; margin-top:16px; }
+  .modal .actions button { flex:1; padding:10px; border:none; border-radius:6px; font-size:14px; }
+  .btn-save { background:var(--green); color:#fff; }
+  .btn-cancel { background:#eee; }
+  .empty { text-align:center; color:#999; padding:30px; font-size:13px; }
+  #version { font-size:11px; opacity:.7; }
+  .poss-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(110px,1fr)); gap:8px; }
+  .poss-card { background:var(--card); border-radius:8px; overflow:hidden; text-align:center; cursor:pointer; }
+  .poss-card img { width:100%; height:90px; object-fit:cover; display:block; background:#eee; }
+  .poss-card .poss-name { font-size:12px; padding:6px 4px; }
+  .photo-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  .photo-row img { width:60px; height:60px; object-fit:cover; border-radius:6px; }
+  .photo-add-btn { width:60px; height:60px; border-radius:6px; border:1px dashed #aaa; background:none; font-size:22px; color:#888; }
+  .txn-row { cursor:pointer; }
+  .cat-tree-row { background:var(--card); border-radius:6px; padding:8px 10px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; }
+  .cat-tree-row .cat-actions button { border:none; background:none; font-size:14px; padding:4px 6px; cursor:pointer; color:#666; }
+  .group h3 { display:flex; justify-content:space-between; align-items:center; }
+  .group h3 .add-sub-btn { font-size:13px; color:var(--green); background:none; border:none; cursor:pointer; text-transform:none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Ons Budget</h1>
+  <span id="version">v0.1</span>
+</header>
+
+<nav>
+  <button class="active" data-tab="budget">Budget</button>
+  <button data-tab="accounts">Rekeningen</button>
+  <button data-tab="transactions">Transacties</button>
+  <button data-tab="possessions">Bezittingen</button>
+  <button data-tab="categories">Categorieën</button>
+</nav>
+
+<main>
+  <div id="tab-budget">
+    <div class="rta">
+      <div style="font-size:12px; color:#666;">Klaar om toe te wijzen</div>
+      <div class="amount" id="rta-amount">€ 0,00</div>
+    </div>
+    <div id="budget-groups"><div class="empty">Nog geen categorieën. Voeg er een toe via Supabase of bouw straks de "+"-knop uit.</div></div>
+  </div>
+
+  <div id="tab-accounts" style="display:none">
+    <div id="accounts-list"><div class="empty">Nog geen rekeningen.</div></div>
+  </div>
+
+  <div id="tab-transactions" style="display:none">
+    <div id="transactions-list"><div class="empty">Nog geen transacties.</div></div>
+  </div>
+
+  <div id="tab-possessions" style="display:none">
+    <div id="possessions-list" class="poss-grid"><div class="empty">Nog geen bezittingen.</div></div>
+  </div>
+
+  <div id="tab-categories" style="display:none">
+    <button class="btn-save" id="add-root-cat-btn" style="width:100%; padding:10px; margin-bottom:10px;">+ Nieuwe hoofdcategorie</button>
+    <div id="categories-tree"><div class="empty">Nog geen categorieën.</div></div>
+  </div>
+</main>
+
+<button class="fab" id="fab-add">+</button>
+
+<div class="modal-bg" id="txn-modal-bg">
+  <div class="modal">
+    <h3 style="margin-top:0;">Nieuwe transactie</h3>
+    <label>Rekening</label>
+    <select id="txn-account"></select>
+    <label>Categorie</label>
+    <select id="txn-category"><option value="">Ready to Assign</option></select>
+    <label>Payee</label>
+    <input type="text" id="txn-payee" placeholder="Bijv. Albert Heijn">
+    <label>Bedrag (negatief = uitgave)</label>
+    <input type="number" step="0.01" id="txn-amount" placeholder="-12.50">
+    <label>Datum</label>
+    <input type="date" id="txn-date">
+    <div class="actions">
+      <button class="btn-cancel" id="txn-cancel">Annuleren</button>
+      <button class="btn-save" id="txn-save">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="txn-detail-bg">
+  <div class="modal">
+    <h3 style="margin-top:0;" id="txn-detail-title">Transactie</h3>
+    <label>Bonnetje</label>
+    <div class="photo-row" id="receipt-photos"></div>
+    <input type="file" id="receipt-file-input" accept="image/*" style="display:none">
+    <div style="margin-top:6px;">
+      <button class="photo-add-btn" id="receipt-add-btn" style="width:auto; padding:6px 12px;">+ Bonnetje toevoegen</button>
+    </div>
+    <div id="poss-link-section" style="margin-top:16px;">
+      <button class="btn-save" id="make-possession-btn" style="width:100%;">Maak hier een bezitting van</button>
+    </div>
+    <div class="actions">
+      <button class="btn-cancel" id="txn-detail-close" style="width:100%;">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="poss-detail-bg">
+  <div class="modal">
+    <h3 style="margin-top:0;">Bezitting</h3>
+    <label>Naam</label>
+    <input type="text" id="poss-name">
+    <label>Categorie</label>
+    <select id="poss-category">
+      <option value="kleding">Kleding</option>
+      <option value="meubilair">Meubilair</option>
+      <option value="apparaten">Apparaten</option>
+      <option value="overig">Overig</option>
+    </select>
+    <label>Notitie</label>
+    <input type="text" id="poss-notitie">
+    <label>Foto's</label>
+    <div class="photo-row" id="poss-photos"></div>
+    <input type="file" id="poss-file-input" accept="image/*" style="display:none">
+    <div style="margin-top:6px;">
+      <button class="photo-add-btn" id="poss-add-photo-btn" style="width:auto; padding:6px 12px;">+ Foto toevoegen</button>
+    </div>
+    <div class="actions">
+      <button class="btn-cancel" id="poss-cancel">Sluiten</button>
+      <button class="btn-save" id="poss-save">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="cat-modal-bg">
+  <div class="modal">
+    <h3 style="margin-top:0;" id="cat-modal-title">Categorie</h3>
+    <label>Naam</label>
+    <input type="text" id="cat-name">
+    <label>Hoofdcategorie (parent)</label>
+    <select id="cat-parent"><option value="">— Geen (dit is een hoofdcategorie) —</option></select>
+    <div class="actions">
+      <button class="btn-cancel" id="cat-cancel">Annuleren</button>
+      <button class="btn-save" id="cat-save">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ---- CONFIG: vul hier je eigen Supabase-project gegevens in ----
+const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const APP_VERSION = 'v0.1';
+document.getElementById('version').textContent = APP_VERSION;
+
+// ---- Tab switching ----
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('main > div').forEach(d => d.style.display = 'none');
+    document.getElementById('tab-' + btn.dataset.tab).style.display = 'block';
+  });
+});
+
+function formatEuro(n) {
+  return '€ ' + Number(n).toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+// ---- Data loading ----
+function monthBounds() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return { monthStr: start.toISOString().slice(0,10), startStr: start.toISOString().slice(0,10), endStr: end.toISOString().slice(0,10) };
+}
+
+async function loadBudget() {
+  const { monthStr, startStr, endStr } = monthBounds();
+
+  const { data: cats, error: cErr } = await supabase
+    .from('categories')
+    .select('id, parent_id, name, sort_order')
+    .order('sort_order');
+  if (cErr) { console.error(cErr); return; }
+
+  const { data: budgetRows } = await supabase
+    .from('budget_months')
+    .select('category_id, assigned')
+    .eq('month', monthStr);
+  const assignedMap = {};
+  (budgetRows || []).forEach(r => assignedMap[r.category_id] = Number(r.assigned));
+
+  const { data: spentRows } = await supabase
+    .from('transactions')
+    .select('category_id, amount')
+    .gte('date', startStr).lt('date', endStr);
+  const spentMap = {};
+  let unassignedAllTimeIncoming = 0;
+  (spentRows || []).forEach(r => { if (r.category_id) spentMap[r.category_id] = (spentMap[r.category_id] || 0) + Number(r.amount); });
+
+  const { data: recurringRows } = await supabase
+    .from('recurring_transactions')
+    .select('category_id, amount, next_date')
+    .eq('active', true)
+    .gte('next_date', startStr).lt('next_date', endStr);
+  const expectedMap = {};
+  (recurringRows || []).forEach(r => { if (r.category_id) expectedMap[r.category_id] = (expectedMap[r.category_id] || 0) + Number(r.amount); });
+
+  // Ready to Assign: alle ooit binnengekomen ongecategoriseerde transacties min alles wat ooit is toegewezen
+  const { data: unassignedTxns } = await supabase.from('transactions').select('amount').is('category_id', null);
+  const totalUnassigned = (unassignedTxns || []).reduce((s, r) => s + Number(r.amount), 0);
+  const { data: allBudgetRows } = await supabase.from('budget_months').select('assigned');
+  const totalAssignedEver = (allBudgetRows || []).reduce((s, r) => s + Number(r.assigned), 0);
+  const rta = totalUnassigned - totalAssignedEver;
+  const rtaEl = document.getElementById('rta-amount');
+  rtaEl.textContent = formatEuro(rta);
+  rtaEl.className = 'amount ' + (rta >= 0 ? 'positive' : 'negative');
+
+  const container = document.getElementById('budget-groups');
+  if (!cats || cats.length === 0) {
+    container.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
+    return;
+  }
+
+  const byParent = {};
+  cats.forEach(c => { const k = c.parent_id || 'root'; (byParent[k] = byParent[k] || []).push(c); });
+  Object.values(byParent).forEach(arr => arr.sort((a,b) => a.sort_order - b.sort_order));
+
+  function renderNode(c) {
+    const children = byParent[c.id];
+    if (children && children.length > 0) {
+      return `<div class="group"><h3>${c.name}</h3>${children.map(renderNode).join('')}</div>`;
+    }
+    const assigned = assignedMap[c.id] || 0;
+    const spent = spentMap[c.id] || 0;
+    const available = assigned + spent;
+    const expected = available + (expectedMap[c.id] || 0);
+    return `
+      <div class="cat-row">
+        <div class="top-line">
+          <div class="name">${c.name}</div>
+          <input class="assign" data-cat="${c.id}" type="number" step="0.01" value="${assigned.toFixed(2)}">
+          <div class="avail ${available >= 0 ? 'positive' : 'negative'}">${formatEuro(available)}</div>
+        </div>
+        ${expected !== available ? `<div class="expected">Verwacht: ${formatEuro(expected)}</div>` : ''}
+      </div>`;
+  }
+
+  container.innerHTML = (byParent['root'] || []).map(renderNode).join('');
+
+  document.querySelectorAll('#budget-groups input.assign').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const catId = inp.dataset.cat;
+      const value = parseFloat(inp.value) || 0;
+      const { monthStr: m } = monthBounds();
+      const { error } = await supabase.from('budget_months')
+        .upsert({ category_id: catId, month: m, assigned: value }, { onConflict: 'category_id,month' });
+      if (error) { console.error(error); alert('Opslaan van toewijzing mislukt.'); }
+      loadBudget();
+    });
+  });
+}
+
+// ---- Quick-add transaction modal ----
+async function openTxnModal() {
+  const { data: accounts } = await supabase.from('accounts').select('id, name').order('sort_order');
+  const { data: categories } = await supabase.from('categories').select('id, name, parent_id').order('sort_order');
+  const hasChildren = new Set((categories || []).filter(c => c.parent_id).map(c => c.parent_id));
+  const leafCats = (categories || []).filter(c => !hasChildren.has(c.id));
+  const nameById = {}; (categories || []).forEach(c => nameById[c.id] = c.name);
+  document.getElementById('txn-account').innerHTML = (accounts || []).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  document.getElementById('txn-category').innerHTML = '<option value="">Ready to Assign</option>' +
+    leafCats.map(c => `<option value="${c.id}">${c.parent_id ? nameById[c.parent_id] + ' › ' : ''}${c.name}</option>`).join('');
+  document.getElementById('txn-payee').value = '';
+  document.getElementById('txn-amount').value = '';
+  document.getElementById('txn-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('txn-modal-bg').classList.add('open');
+}
+
+function closeTxnModal() {
+  document.getElementById('txn-modal-bg').classList.remove('open');
+}
+
+async function saveTxn() {
+  const account_id = document.getElementById('txn-account').value;
+  const category_id = document.getElementById('txn-category').value || null;
+  const payee = document.getElementById('txn-payee').value;
+  const amount = parseFloat(document.getElementById('txn-amount').value);
+  const date = document.getElementById('txn-date').value;
+  if (!account_id || isNaN(amount) || !date) { alert('Vul rekening, bedrag en datum in.'); return; }
+
+  const { error } = await supabase.from('transactions').insert({ account_id, category_id, payee, amount, date });
+  if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
+  closeTxnModal();
+  loadBudget();
+  loadTransactions();
+}
+
+document.getElementById('fab-add').addEventListener('click', openTxnModal);
+document.getElementById('txn-cancel').addEventListener('click', closeTxnModal);
+document.getElementById('txn-save').addEventListener('click', saveTxn);
+
+// ---- Transactions list with click-to-detail ----
+async function loadTransactions() {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('*, accounts(name), categories(name)')
+    .order('date', { ascending: false })
+    .limit(50);
+  if (error) { console.error(error); return; }
+  const el = document.getElementById('transactions-list');
+  if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Nog geen transacties.</div>'; return; }
+  el.innerHTML = data.map(t => `
+    <div class="txn-row" data-txn="${t.id}">
+      <div>
+        <div>${t.payee || '(geen payee)'}</div>
+        <div style="font-size:11px; color:#888;">${t.date} · ${t.accounts?.name || ''} · ${t.categories?.name || 'Ready to Assign'}</div>
+      </div>
+      <div style="color:${t.amount < 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${formatEuro(t.amount)}</div>
+    </div>
+  `).join('');
+  document.querySelectorAll('.txn-row').forEach(row => {
+    row.addEventListener('click', () => openTxnDetail(row.dataset.txn));
+  });
+}
+
+let currentTxnId = null;
+
+async function openTxnDetail(txnId) {
+  currentTxnId = txnId;
+  document.getElementById('txn-detail-title').textContent = 'Transactie #' + txnId;
+  await loadReceiptPhotos();
+  document.getElementById('txn-detail-bg').classList.add('open');
+}
+
+async function loadReceiptPhotos() {
+  const { data } = await supabase.from('transaction_receipts').select('*').eq('transaction_id', currentTxnId);
+  const el = document.getElementById('receipt-photos');
+  el.innerHTML = (data || []).map(r => `<img src="${r.foto_url}">`).join('');
+}
+
+document.getElementById('receipt-add-btn').addEventListener('click', () => {
+  document.getElementById('receipt-file-input').click();
+});
+
+document.getElementById('receipt-file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file || !currentTxnId) return;
+  const path = `receipt_${currentTxnId}_${Date.now()}.jpg`;
+  const { error: upErr } = await supabase.storage.from('budget-bonnetjes').upload(path, file);
+  if (upErr) { console.error(upErr); alert('Upload mislukt.'); return; }
+  const { data: urlData } = supabase.storage.from('budget-bonnetjes').getPublicUrl(path);
+  await supabase.from('transaction_receipts').insert({ transaction_id: currentTxnId, foto_url: urlData.publicUrl });
+  loadReceiptPhotos();
+  e.target.value = '';
+});
+
+document.getElementById('txn-detail-close').addEventListener('click', () => {
+  document.getElementById('txn-detail-bg').classList.remove('open');
+});
+
+document.getElementById('make-possession-btn').addEventListener('click', async () => {
+  document.getElementById('txn-detail-bg').classList.remove('open');
+  await openPossessionDetail(null, currentTxnId);
+});
+
+// ---- Possessions ----
+async function loadPossessions() {
+  const { data: possessions } = await supabase.from('possessions').select('id, name, category');
+  const el = document.getElementById('possessions-list');
+  if (!possessions || possessions.length === 0) { el.innerHTML = '<div class="empty">Nog geen bezittingen.</div>'; return; }
+
+  const { data: photos } = await supabase.from('possession_photos').select('possession_id, foto_url').order('volgorde');
+  const firstPhoto = {};
+  (photos || []).forEach(p => { if (!firstPhoto[p.possession_id]) firstPhoto[p.possession_id] = p.foto_url; });
+
+  el.innerHTML = possessions.map(p => `
+    <div class="poss-card" data-poss="${p.id}">
+      ${firstPhoto[p.id] ? `<img src="${firstPhoto[p.id]}">` : `<div style="height:90px; background:#eee;"></div>`}
+      <div class="poss-name">${p.name}</div>
+    </div>
+  `).join('');
+  document.querySelectorAll('.poss-card').forEach(card => {
+    card.addEventListener('click', () => openPossessionDetail(card.dataset.poss));
+  });
+}
+
+let currentPossId = null;
+
+async function openPossessionDetail(possId, fromTxnId) {
+  currentPossId = possId;
+  if (possId) {
+    const { data } = await supabase.from('possessions').select('*').eq('id', possId).single();
+    document.getElementById('poss-name').value = data.name || '';
+    document.getElementById('poss-category').value = data.category || 'overig';
+    document.getElementById('poss-notitie').value = data.notitie || '';
+  } else {
+    document.getElementById('poss-name').value = '';
+    document.getElementById('poss-category').value = 'overig';
+    document.getElementById('poss-notitie').value = '';
+    document.getElementById('poss-photos').innerHTML = '';
+  }
+  document.getElementById('poss-detail-bg').dataset.fromTxn = fromTxnId || '';
+  await loadPossessionPhotos();
+  document.getElementById('poss-detail-bg').classList.add('open');
+}
+
+async function loadPossessionPhotos() {
+  if (!currentPossId) { document.getElementById('poss-photos').innerHTML = ''; return; }
+  const { data } = await supabase.from('possession_photos').select('*').eq('possession_id', currentPossId).order('volgorde');
+  document.getElementById('poss-photos').innerHTML = (data || []).map(p => `<img src="${p.foto_url}">`).join('');
+}
+
+document.getElementById('poss-add-photo-btn').addEventListener('click', () => {
+  if (!currentPossId) { alert('Sla de bezitting eerst op voordat je foto\'s toevoegt.'); return; }
+  document.getElementById('poss-file-input').click();
+});
+
+document.getElementById('poss-file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file || !currentPossId) return;
+  const path = `poss_${currentPossId}_${Date.now()}.jpg`;
+  const { error: upErr } = await supabase.storage.from('budget-bezittingen').upload(path, file);
+  if (upErr) { console.error(upErr); alert('Upload mislukt.'); return; }
+  const { data: urlData } = supabase.storage.from('budget-bezittingen').getPublicUrl(path);
+  await supabase.from('possession_photos').insert({ possession_id: currentPossId, foto_url: urlData.publicUrl });
+  loadPossessionPhotos();
+  e.target.value = '';
+});
+
+document.getElementById('poss-cancel').addEventListener('click', () => {
+  document.getElementById('poss-detail-bg').classList.remove('open');
+});
+
+document.getElementById('poss-save').addEventListener('click', async () => {
+  const name = document.getElementById('poss-name').value;
+  const category = document.getElementById('poss-category').value;
+  const notitie = document.getElementById('poss-notitie').value;
+  if (!name) { alert('Vul een naam in.'); return; }
+
+  if (currentPossId) {
+    await supabase.from('possessions').update({ name, category, notitie }).eq('id', currentPossId);
+  } else {
+    const fromTxn = document.getElementById('poss-detail-bg').dataset.fromTxn || null;
+    const { data, error } = await supabase.from('possessions')
+      .insert({ name, category, notitie, transaction_id: fromTxn || null })
+      .select().single();
+    if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
+    currentPossId = data.id;
+  }
+  document.getElementById('poss-detail-bg').classList.remove('open');
+  loadPossessions();
+});
+
+loadPossessions();
+
+async function loadAccounts() {
+  const { data, error } = await supabase.from('accounts').select('*').order('sort_order');
+  if (error) { console.error(error); return; }
+  const el = document.getElementById('accounts-list');
+  if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Nog geen rekeningen.</div>'; return; }
+  el.innerHTML = data.map(a => `
+    <div class="acc-row">
+      <div>${a.name}</div>
+      <div>${formatEuro(a.starting_balance)}</div>
+    </div>
+  `).join('');
+}
+
+loadBudget();
+loadAccounts();
+loadTransactions();
+loadCategoryManager();
+
+// ---- Categorie-beheer (boomstructuur) ----
+async function loadCategoryManager() {
+  const { data: cats, error } = await supabase.from('categories').select('id, parent_id, name, sort_order').order('sort_order');
+  if (error) { console.error(error); return; }
+  const el = document.getElementById('categories-tree');
+  if (!cats || cats.length === 0) { el.innerHTML = '<div class="empty">Nog geen categorieën.</div>'; return; }
+
+  const byParent = {};
+  cats.forEach(c => { const k = c.parent_id || 'root'; (byParent[k] = byParent[k] || []).push(c); });
+  Object.values(byParent).forEach(arr => arr.sort((a,b) => a.sort_order - b.sort_order));
+
+  function renderRow(c, depth) {
+    const children = byParent[c.id] || [];
+    return `
+      <div class="cat-tree-row" style="margin-left:${depth * 16}px;">
+        <div>${c.name}</div>
+        <div class="cat-actions">
+          <button data-action="add" data-id="${c.id}" title="Subcategorie toevoegen">➕</button>
+          <button data-action="edit" data-id="${c.id}" title="Bewerken/verplaatsen">✏️</button>
+          <button data-action="delete" data-id="${c.id}" title="Verwijderen">🗑️</button>
+        </div>
+      </div>
+      ${children.map(ch => renderRow(ch, depth + 1)).join('')}
+    `;
+  }
+
+  el.innerHTML = (byParent['root'] || []).map(c => renderRow(c, 0)).join('');
+
+  el.querySelectorAll('button[data-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      if (btn.dataset.action === 'add') openCatModal('add', null, id);
+      else if (btn.dataset.action === 'edit') openCatModal('edit', id, null);
+      else if (btn.dataset.action === 'delete') deleteCategory(id);
+    });
+  });
+}
+
+function getDescendantIds(cats, rootId) {
+  const ids = new Set();
+  function recurse(pid) {
+    cats.filter(c => c.parent_id == pid).forEach(c => { ids.add(c.id); recurse(c.id); });
+  }
+  recurse(rootId);
+  return ids;
+}
+
+let catModalMode = 'add';
+let catModalEditId = null;
+
+async function openCatModal(mode, editId, presetParentId) {
+  catModalMode = mode;
+  catModalEditId = editId;
+  const { data: cats } = await supabase.from('categories').select('id, parent_id, name').order('sort_order');
+  const excluded = editId ? getDescendantIds(cats, editId).add(Number(editId)) : new Set();
+  const options = (cats || []).filter(c => !excluded.has(c.id))
+    .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('cat-parent').innerHTML = '<option value="">— Geen (dit is een hoofdcategorie) —</option>' + options;
+
+  if (mode === 'edit') {
+    const current = cats.find(c => c.id == editId);
+    document.getElementById('cat-modal-title').textContent = 'Categorie bewerken';
+    document.getElementById('cat-name').value = current ? current.name : '';
+    document.getElementById('cat-parent').value = current && current.parent_id ? current.parent_id : '';
+  } else {
+    document.getElementById('cat-modal-title').textContent = 'Nieuwe categorie';
+    document.getElementById('cat-name').value = '';
+    document.getElementById('cat-parent').value = presetParentId || '';
+  }
+  document.getElementById('cat-modal-bg').classList.add('open');
+}
+
+document.getElementById('add-root-cat-btn').addEventListener('click', () => openCatModal('add', null, null));
+document.getElementById('cat-cancel').addEventListener('click', () => document.getElementById('cat-modal-bg').classList.remove('open'));
+
+document.getElementById('cat-save').addEventListener('click', async () => {
+  const name = document.getElementById('cat-name').value.trim();
+  const parent_id = document.getElementById('cat-parent').value || null;
+  if (!name) { alert('Vul een naam in.'); return; }
+
+  if (catModalMode === 'edit') {
+    const { error } = await supabase.from('categories').update({ name, parent_id }).eq('id', catModalEditId);
+    if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
+  } else {
+    const { error } = await supabase.from('categories').insert({ name, parent_id });
+    if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
+  }
+  document.getElementById('cat-modal-bg').classList.remove('open');
+  loadCategoryManager();
+  loadBudget();
+});
+
+async function deleteCategory(id) {
+  if (!confirm('Deze categorie verwijderen?')) return;
+  const { error } = await supabase.from('categories').delete().eq('id', id);
+  if (error) {
+    if (error.code === '23503') {
+      alert('Deze categorie heeft nog subcategorieën. Verplaats of verwijder die eerst.');
+    } else {
+      console.error(error);
+      alert('Verwijderen mislukt.');
+    }
+    return;
+  }
+  loadCategoryManager();
+  loadBudget();
+}
+
+</script>
+</body>
+</html>
