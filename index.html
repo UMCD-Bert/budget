@@ -50,7 +50,10 @@
   .photo-row img { width:60px; height:60px; object-fit:cover; border-radius:6px; }
   .photo-add-btn { width:60px; height:60px; border-radius:6px; border:1px dashed #aaa; background:none; font-size:22px; color:#888; }
   .txn-row { cursor:pointer; }
-  .cat-tree-row { background:var(--card); border-radius:6px; padding:8px 10px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; }
+  .cat-tree-row { background:var(--card); border-radius:6px; padding:8px 10px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; cursor:grab; border:2px solid transparent; }
+  .cat-tree-row.drag-over-before { border-top:2px solid var(--green); }
+  .cat-tree-row.drag-over-after { border-bottom:2px solid var(--green); }
+  .cat-tree-row.drag-over-inside { background:#e8f5e9; border-color:var(--green); }
   .cat-tree-row .cat-actions button { border:none; background:none; font-size:14px; padding:4px 6px; cursor:pointer; color:#666; }
   .group h3 { display:flex; justify-content:space-between; align-items:center; }
   .group h3 .add-sub-btn { font-size:13px; color:var(--green); background:none; border:none; cursor:pointer; text-transform:none; }
@@ -523,7 +526,7 @@ async function loadCategoryManager() {
   function renderRow(c, depth) {
     const children = byParent[c.id] || [];
     return `
-      <div class="cat-tree-row" style="margin-left:${depth * 16}px;">
+      <div class="cat-tree-row" draggable="true" data-id="${c.id}" data-parent="${c.parent_id || ''}" style="margin-left:${depth * 16}px;">
         <div>${c.name}</div>
         <div class="cat-actions">
           <button data-action="add" data-id="${c.id}" title="Subcategorie toevoegen">➕</button>
@@ -545,6 +548,94 @@ async function loadCategoryManager() {
       else if (btn.dataset.action === 'delete') deleteCategory(id);
     });
   });
+
+  wireDragAndDrop(el, cats);
+}
+
+function clearDragClasses(el) {
+  el.querySelectorAll('.cat-tree-row').forEach(r => r.classList.remove('drag-over-before', 'drag-over-after', 'drag-over-inside'));
+}
+
+function wireDragAndDrop(el, cats) {
+  let dragId = null;
+
+  el.querySelectorAll('.cat-tree-row').forEach(row => {
+    row.addEventListener('dragstart', (e) => {
+      dragId = row.dataset.id;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', dragId);
+    });
+
+    row.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (row.dataset.id === dragId) return;
+      const rect = row.getBoundingClientRect();
+      const frac = (e.clientY - rect.top) / rect.height;
+      clearDragClasses(el);
+      if (frac < 0.25) row.classList.add('drag-over-before');
+      else if (frac > 0.75) row.classList.add('drag-over-after');
+      else row.classList.add('drag-over-inside');
+    });
+
+    row.addEventListener('dragleave', () => {
+      row.classList.remove('drag-over-before', 'drag-over-after', 'drag-over-inside');
+    });
+
+    row.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      const targetId = row.dataset.id;
+      const rect = row.getBoundingClientRect();
+      const frac = (e.clientY - rect.top) / rect.height;
+      const mode = frac < 0.25 ? 'before' : (frac > 0.75 ? 'after' : 'inside');
+      clearDragClasses(el);
+      if (dragId && dragId !== targetId) {
+        await moveCategory(cats, dragId, targetId, mode);
+      }
+    });
+  });
+}
+
+async function moveCategory(cats, dragId, targetId, mode) {
+  dragId = Number(dragId);
+  targetId = Number(targetId);
+  const dragCat = cats.find(c => c.id === dragId);
+  const targetCat = cats.find(c => c.id === targetId);
+  if (!dragCat || !targetCat) return;
+
+  // Voorkom dat een categorie onder zichzelf of een van haar eigen subcategorieën terechtkomt
+  const descendants = getDescendantIds(cats, dragId);
+  if (descendants.has(targetId) || targetId === dragId) {
+    alert('Je kunt een categorie niet onder zichzelf of een eigen subcategorie plaatsen.');
+    return;
+  }
+
+  const newParentId = mode === 'inside' ? targetId : (targetCat.parent_id || null);
+  if (newParentId && descendants.has(newParentId)) {
+    alert('Je kunt een categorie niet onder zichzelf of een eigen subcategorie plaatsen.');
+    return;
+  }
+
+  // Bestaande siblings in de nieuwe parent, zonder de gesleepte categorie
+  let siblings = cats.filter(c => (c.parent_id || null) === newParentId && c.id !== dragId)
+    .sort((a, b) => a.sort_order - b.sort_order);
+
+  let insertAt = siblings.length; // default: aan het einde (mode 'inside')
+  if (mode === 'before') insertAt = siblings.findIndex(c => c.id === targetId);
+  if (mode === 'after') insertAt = siblings.findIndex(c => c.id === targetId) + 1;
+
+  siblings.splice(insertAt, 0, dragCat);
+
+  // Herordenen + evt. parent wijzigen, in de database
+  const updates = siblings.map((c, i) => ({ id: c.id, sort_order: i }));
+  for (const u of updates) {
+    const patch = { sort_order: u.sort_order };
+    if (u.id === dragId) patch.parent_id = newParentId;
+    const { error } = await sb.from('categories').update(patch).eq('id', u.id);
+    if (error) { console.error(error); alert('Verplaatsen mislukt.'); return; }
+  }
+
+  loadCategoryManager();
+  loadBudget();
 }
 
 function getDescendantIds(cats, rootId) {
