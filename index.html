@@ -179,12 +179,12 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@sb/sb-js@2"></script>
 <script>
 // ---- CONFIG: vul hier je eigen Supabase-project gegevens in ----
-const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
+const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.sb.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const APP_VERSION = 'v0.1';
 document.getElementById('version').textContent = APP_VERSION;
@@ -214,20 +214,20 @@ function monthBounds() {
 async function loadBudget() {
   const { monthStr, startStr, endStr } = monthBounds();
 
-  const { data: cats, error: cErr } = await supabase
+  const { data: cats, error: cErr } = await sb
     .from('categories')
     .select('id, parent_id, name, sort_order')
     .order('sort_order');
   if (cErr) { console.error(cErr); return; }
 
-  const { data: budgetRows } = await supabase
+  const { data: budgetRows } = await sb
     .from('budget_months')
     .select('category_id, assigned')
     .eq('month', monthStr);
   const assignedMap = {};
   (budgetRows || []).forEach(r => assignedMap[r.category_id] = Number(r.assigned));
 
-  const { data: spentRows } = await supabase
+  const { data: spentRows } = await sb
     .from('transactions')
     .select('category_id, amount')
     .gte('date', startStr).lt('date', endStr);
@@ -235,7 +235,7 @@ async function loadBudget() {
   let unassignedAllTimeIncoming = 0;
   (spentRows || []).forEach(r => { if (r.category_id) spentMap[r.category_id] = (spentMap[r.category_id] || 0) + Number(r.amount); });
 
-  const { data: recurringRows } = await supabase
+  const { data: recurringRows } = await sb
     .from('recurring_transactions')
     .select('category_id, amount, next_date')
     .eq('active', true)
@@ -244,9 +244,9 @@ async function loadBudget() {
   (recurringRows || []).forEach(r => { if (r.category_id) expectedMap[r.category_id] = (expectedMap[r.category_id] || 0) + Number(r.amount); });
 
   // Ready to Assign: alle ooit binnengekomen ongecategoriseerde transacties min alles wat ooit is toegewezen
-  const { data: unassignedTxns } = await supabase.from('transactions').select('amount').is('category_id', null);
+  const { data: unassignedTxns } = await sb.from('transactions').select('amount').is('category_id', null);
   const totalUnassigned = (unassignedTxns || []).reduce((s, r) => s + Number(r.amount), 0);
-  const { data: allBudgetRows } = await supabase.from('budget_months').select('assigned');
+  const { data: allBudgetRows } = await sb.from('budget_months').select('assigned');
   const totalAssignedEver = (allBudgetRows || []).reduce((s, r) => s + Number(r.assigned), 0);
   const rta = totalUnassigned - totalAssignedEver;
   const rtaEl = document.getElementById('rta-amount');
@@ -290,7 +290,7 @@ async function loadBudget() {
       const catId = inp.dataset.cat;
       const value = parseFloat(inp.value) || 0;
       const { monthStr: m } = monthBounds();
-      const { error } = await supabase.from('budget_months')
+      const { error } = await sb.from('budget_months')
         .upsert({ category_id: catId, month: m, assigned: value }, { onConflict: 'category_id,month' });
       if (error) { console.error(error); alert('Opslaan van toewijzing mislukt.'); }
       loadBudget();
@@ -300,8 +300,8 @@ async function loadBudget() {
 
 // ---- Quick-add transaction modal ----
 async function openTxnModal() {
-  const { data: accounts } = await supabase.from('accounts').select('id, name').order('sort_order');
-  const { data: categories } = await supabase.from('categories').select('id, name, parent_id').order('sort_order');
+  const { data: accounts } = await sb.from('accounts').select('id, name').order('sort_order');
+  const { data: categories } = await sb.from('categories').select('id, name, parent_id').order('sort_order');
   const hasChildren = new Set((categories || []).filter(c => c.parent_id).map(c => c.parent_id));
   const leafCats = (categories || []).filter(c => !hasChildren.has(c.id));
   const nameById = {}; (categories || []).forEach(c => nameById[c.id] = c.name);
@@ -326,7 +326,7 @@ async function saveTxn() {
   const date = document.getElementById('txn-date').value;
   if (!account_id || isNaN(amount) || !date) { alert('Vul rekening, bedrag en datum in.'); return; }
 
-  const { error } = await supabase.from('transactions').insert({ account_id, category_id, payee, amount, date });
+  const { error } = await sb.from('transactions').insert({ account_id, category_id, payee, amount, date });
   if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
   closeTxnModal();
   loadBudget();
@@ -339,7 +339,7 @@ document.getElementById('txn-save').addEventListener('click', saveTxn);
 
 // ---- Transactions list with click-to-detail ----
 async function loadTransactions() {
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from('transactions')
     .select('*, accounts(name), categories(name)')
     .order('date', { ascending: false })
@@ -371,7 +371,7 @@ async function openTxnDetail(txnId) {
 }
 
 async function loadReceiptPhotos() {
-  const { data } = await supabase.from('transaction_receipts').select('*').eq('transaction_id', currentTxnId);
+  const { data } = await sb.from('transaction_receipts').select('*').eq('transaction_id', currentTxnId);
   const el = document.getElementById('receipt-photos');
   el.innerHTML = (data || []).map(r => `<img src="${r.foto_url}">`).join('');
 }
@@ -384,10 +384,10 @@ document.getElementById('receipt-file-input').addEventListener('change', async (
   const file = e.target.files[0];
   if (!file || !currentTxnId) return;
   const path = `receipt_${currentTxnId}_${Date.now()}.jpg`;
-  const { error: upErr } = await supabase.storage.from('budget-bonnetjes').upload(path, file);
+  const { error: upErr } = await sb.storage.from('budget-bonnetjes').upload(path, file);
   if (upErr) { console.error(upErr); alert('Upload mislukt.'); return; }
-  const { data: urlData } = supabase.storage.from('budget-bonnetjes').getPublicUrl(path);
-  await supabase.from('transaction_receipts').insert({ transaction_id: currentTxnId, foto_url: urlData.publicUrl });
+  const { data: urlData } = sb.storage.from('budget-bonnetjes').getPublicUrl(path);
+  await sb.from('transaction_receipts').insert({ transaction_id: currentTxnId, foto_url: urlData.publicUrl });
   loadReceiptPhotos();
   e.target.value = '';
 });
@@ -403,11 +403,11 @@ document.getElementById('make-possession-btn').addEventListener('click', async (
 
 // ---- Possessions ----
 async function loadPossessions() {
-  const { data: possessions } = await supabase.from('possessions').select('id, name, category');
+  const { data: possessions } = await sb.from('possessions').select('id, name, category');
   const el = document.getElementById('possessions-list');
   if (!possessions || possessions.length === 0) { el.innerHTML = '<div class="empty">Nog geen bezittingen.</div>'; return; }
 
-  const { data: photos } = await supabase.from('possession_photos').select('possession_id, foto_url').order('volgorde');
+  const { data: photos } = await sb.from('possession_photos').select('possession_id, foto_url').order('volgorde');
   const firstPhoto = {};
   (photos || []).forEach(p => { if (!firstPhoto[p.possession_id]) firstPhoto[p.possession_id] = p.foto_url; });
 
@@ -427,7 +427,7 @@ let currentPossId = null;
 async function openPossessionDetail(possId, fromTxnId) {
   currentPossId = possId;
   if (possId) {
-    const { data } = await supabase.from('possessions').select('*').eq('id', possId).single();
+    const { data } = await sb.from('possessions').select('*').eq('id', possId).single();
     document.getElementById('poss-name').value = data.name || '';
     document.getElementById('poss-category').value = data.category || 'overig';
     document.getElementById('poss-notitie').value = data.notitie || '';
@@ -444,7 +444,7 @@ async function openPossessionDetail(possId, fromTxnId) {
 
 async function loadPossessionPhotos() {
   if (!currentPossId) { document.getElementById('poss-photos').innerHTML = ''; return; }
-  const { data } = await supabase.from('possession_photos').select('*').eq('possession_id', currentPossId).order('volgorde');
+  const { data } = await sb.from('possession_photos').select('*').eq('possession_id', currentPossId).order('volgorde');
   document.getElementById('poss-photos').innerHTML = (data || []).map(p => `<img src="${p.foto_url}">`).join('');
 }
 
@@ -457,10 +457,10 @@ document.getElementById('poss-file-input').addEventListener('change', async (e) 
   const file = e.target.files[0];
   if (!file || !currentPossId) return;
   const path = `poss_${currentPossId}_${Date.now()}.jpg`;
-  const { error: upErr } = await supabase.storage.from('budget-bezittingen').upload(path, file);
+  const { error: upErr } = await sb.storage.from('budget-bezittingen').upload(path, file);
   if (upErr) { console.error(upErr); alert('Upload mislukt.'); return; }
-  const { data: urlData } = supabase.storage.from('budget-bezittingen').getPublicUrl(path);
-  await supabase.from('possession_photos').insert({ possession_id: currentPossId, foto_url: urlData.publicUrl });
+  const { data: urlData } = sb.storage.from('budget-bezittingen').getPublicUrl(path);
+  await sb.from('possession_photos').insert({ possession_id: currentPossId, foto_url: urlData.publicUrl });
   loadPossessionPhotos();
   e.target.value = '';
 });
@@ -476,10 +476,10 @@ document.getElementById('poss-save').addEventListener('click', async () => {
   if (!name) { alert('Vul een naam in.'); return; }
 
   if (currentPossId) {
-    await supabase.from('possessions').update({ name, category, notitie }).eq('id', currentPossId);
+    await sb.from('possessions').update({ name, category, notitie }).eq('id', currentPossId);
   } else {
     const fromTxn = document.getElementById('poss-detail-bg').dataset.fromTxn || null;
-    const { data, error } = await supabase.from('possessions')
+    const { data, error } = await sb.from('possessions')
       .insert({ name, category, notitie, transaction_id: fromTxn || null })
       .select().single();
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
@@ -492,7 +492,7 @@ document.getElementById('poss-save').addEventListener('click', async () => {
 loadPossessions();
 
 async function loadAccounts() {
-  const { data, error } = await supabase.from('accounts').select('*').order('sort_order');
+  const { data, error } = await sb.from('accounts').select('*').order('sort_order');
   if (error) { console.error(error); return; }
   const el = document.getElementById('accounts-list');
   if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Nog geen rekeningen.</div>'; return; }
@@ -511,7 +511,7 @@ loadCategoryManager();
 
 // ---- Categorie-beheer (boomstructuur) ----
 async function loadCategoryManager() {
-  const { data: cats, error } = await supabase.from('categories').select('id, parent_id, name, sort_order').order('sort_order');
+  const { data: cats, error } = await sb.from('categories').select('id, parent_id, name, sort_order').order('sort_order');
   if (error) { console.error(error); return; }
   const el = document.getElementById('categories-tree');
   if (!cats || cats.length === 0) { el.innerHTML = '<div class="empty">Nog geen categorieën.</div>'; return; }
@@ -562,7 +562,7 @@ let catModalEditId = null;
 async function openCatModal(mode, editId, presetParentId) {
   catModalMode = mode;
   catModalEditId = editId;
-  const { data: cats } = await supabase.from('categories').select('id, parent_id, name').order('sort_order');
+  const { data: cats } = await sb.from('categories').select('id, parent_id, name').order('sort_order');
   const excluded = editId ? getDescendantIds(cats, editId).add(Number(editId)) : new Set();
   const options = (cats || []).filter(c => !excluded.has(c.id))
     .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
@@ -590,10 +590,10 @@ document.getElementById('cat-save').addEventListener('click', async () => {
   if (!name) { alert('Vul een naam in.'); return; }
 
   if (catModalMode === 'edit') {
-    const { error } = await supabase.from('categories').update({ name, parent_id }).eq('id', catModalEditId);
+    const { error } = await sb.from('categories').update({ name, parent_id }).eq('id', catModalEditId);
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
   } else {
-    const { error } = await supabase.from('categories').insert({ name, parent_id });
+    const { error } = await sb.from('categories').insert({ name, parent_id });
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
   }
   document.getElementById('cat-modal-bg').classList.remove('open');
@@ -603,7 +603,7 @@ document.getElementById('cat-save').addEventListener('click', async () => {
 
 async function deleteCategory(id) {
   if (!confirm('Deze categorie verwijderen?')) return;
-  const { error } = await supabase.from('categories').delete().eq('id', id);
+  const { error } = await sb.from('categories').delete().eq('id', id);
   if (error) {
     if (error.code === '23503') {
       alert('Deze categorie heeft nog subcategorieën. Verplaats of verwijder die eerst.');
