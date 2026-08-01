@@ -89,6 +89,7 @@
   </div>
 
   <div id="tab-accounts" style="display:none">
+    <button class="btn-save" id="add-account-btn" style="width:100%; padding:10px; margin-bottom:10px;">+ Rekening toevoegen</button>
     <div id="accounts-list"><div class="empty">Nog geen rekeningen.</div></div>
   </div>
 
@@ -154,6 +155,31 @@
     <div class="actions">
       <button class="btn-cancel" id="zak-cat-cancel">Annuleren</button>
       <button class="btn-save" id="zak-cat-save">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="account-modal-bg">
+  <div class="modal">
+    <h3 style="margin-top:0;">Nieuwe rekening</h3>
+    <label>Naam</label>
+    <input type="text" id="account-name" placeholder="Bijv. Betaalrekening">
+    <label>Type</label>
+    <select id="account-type">
+      <option value="checking">Betaalrekening</option>
+      <option value="savings">Spaarrekening</option>
+      <option value="creditcard">Creditcard</option>
+    </select>
+    <label>Voor welk budget?</label>
+    <select id="account-scope">
+      <option value="prive">Privé</option>
+      <option value="zakelijk">Zakelijk</option>
+    </select>
+    <label>Startsaldo</label>
+    <input type="number" step="0.01" id="account-balance" placeholder="0.00">
+    <div class="actions">
+      <button class="btn-cancel" id="account-cancel">Annuleren</button>
+      <button class="btn-save" id="account-save">Opslaan</button>
     </div>
   </div>
 </div>
@@ -244,7 +270,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v1.1';
+const APP_VERSION = 'v1.2';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Tab switching ----
@@ -344,7 +370,7 @@ async function loadBudget() {
       <div class="cat-row">
         <div class="top-line">
           <div class="name">${c.name}</div>
-          <input class="assign" data-cat="${c.id}" type="number" step="0.01" value="${assigned.toFixed(2)}">
+          <input class="assign" data-cat="${c.id}" type="number" step="50" value="${assigned.toFixed(2)}">
           <div class="avail ${available >= 0 ? 'positive' : 'negative'}">${formatEuro(available)}</div>
         </div>
         ${expected !== available ? `<div class="expected">Verwacht: ${formatEuro(expected)}</div>` : ''}
@@ -574,6 +600,32 @@ async function loadAccounts() {
     </div>
   `).join('');
 }
+
+document.getElementById('add-account-btn').addEventListener('click', () => {
+  document.getElementById('account-name').value = '';
+  document.getElementById('account-type').value = 'checking';
+  document.getElementById('account-scope').value = 'prive';
+  document.getElementById('account-balance').value = '0.00';
+  document.getElementById('account-modal-bg').classList.add('open');
+});
+
+document.getElementById('account-cancel').addEventListener('click', () => {
+  document.getElementById('account-modal-bg').classList.remove('open');
+});
+
+document.getElementById('account-save').addEventListener('click', async () => {
+  const name = document.getElementById('account-name').value.trim();
+  const type = document.getElementById('account-type').value;
+  const scope = document.getElementById('account-scope').value;
+  const starting_balance = parseFloat(document.getElementById('account-balance').value) || 0;
+  if (!name) { alert('Vul een naam in.'); return; }
+
+  const { error } = await sb.from('accounts').insert({ name, type, scope, starting_balance });
+  if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
+  document.getElementById('account-modal-bg').classList.remove('open');
+  loadAccounts();
+  loadBudget();
+});
 
 loadBudget();
 loadAccounts();
