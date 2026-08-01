@@ -1,10 +1,13 @@
+<!-- PROJECT: budget-app (Huishouden Supabase-project) — dit bestand hoort op GitHub als index.html -->
 <!DOCTYPE html>
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ons Budget</title>
-<link rel="manifest" href="data:application/json,{%22name%22:%22Ons%20Budget%22,%22display%22:%22standalone%22,%22start_url%22:%22.%22}">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%B7%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%232e7d32'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle'%3E%F0%9F%90%B7%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="data:application/json,{%22name%22:%22Ons%20Budget%22,%22display%22:%22standalone%22,%22start_url%22:%22.%22,%22icons%22:[{%22src%22:%22data:image/svg+xml,%253Csvg%2520xmlns=%2527http://www.w3.org/2000/svg%2527%2520viewBox=%25270%25200%2520100%2520100%2527%253E%253Crect%2520width=%2527100%2527%2520height=%2527100%2527%2520rx=%252720%2527%2520fill=%2527%25232e7d32%2527/%253E%253Ctext%2520x=%252750%2527%2520y=%252768%2527%2520font-size=%252760%2527%2520text-anchor=%2527middle%2527%253E%25F0%259F%2590%25B7%253C/text%253E%253C/svg%253E%22,%22sizes%22:%22192x192%22,%22type%22:%22image/svg+xml%22}]}">
 <style>
   :root { --green:#2e7d32; --red:#c62828; --bg:#f5f5f5; --card:#fff; --border:#ddd; }
   * { box-sizing: border-box; }
@@ -72,6 +75,7 @@
   <button data-tab="transactions">Transacties</button>
   <button data-tab="possessions">Bezittingen</button>
   <button data-tab="categories">Categorieën</button>
+  <button data-tab="zakelijk">Zakelijk</button>
 </nav>
 
 <main>
@@ -79,6 +83,7 @@
     <div class="rta">
       <div style="font-size:12px; color:#666;">Klaar om toe te wijzen</div>
       <div class="amount" id="rta-amount">€ 0,00</div>
+      <div style="font-size:11px; color:#888; margin-top:6px;">Totaal saldo (privé + zakelijk): <span id="combined-total">€ 0,00</span></div>
     </div>
     <div id="budget-groups"><div class="empty">Nog geen categorieën. Voeg er een toe via Supabase of bouw straks de "+"-knop uit.</div></div>
   </div>
@@ -99,9 +104,59 @@
     <button class="btn-save" id="add-root-cat-btn" style="width:100%; padding:10px; margin-bottom:10px;">+ Nieuwe hoofdcategorie</button>
     <div id="categories-tree"><div class="empty">Nog geen categorieën.</div></div>
   </div>
+
+  <div id="tab-zakelijk" style="display:none">
+    <div class="rta" id="zak-resultaat">
+      <div style="font-size:12px; color:#666;">Resultaat deze maand</div>
+      <div class="amount" id="zak-resultaat-amount">€ 0,00</div>
+      <div style="font-size:11px; color:#888; margin-top:4px;">
+        Inkomsten: <span id="zak-inkomsten">€ 0,00</span> · Uitgaven: <span id="zak-uitgaven">€ 0,00</span>
+      </div>
+    </div>
+    <div class="group">
+      <h3>Categorieën <button class="add-sub-btn" id="zak-add-cat-btn">+ toevoegen</button></h3>
+      <div id="zak-categories-list"><div class="empty">Nog geen zakelijke categorieën.</div></div>
+    </div>
+    <div class="group">
+      <h3>Transacties</h3>
+      <div id="zak-transactions-list"><div class="empty">Nog geen zakelijke transacties.</div></div>
+    </div>
+  </div>
 </main>
 
 <button class="fab" id="fab-add">+</button>
+
+<div class="modal-bg" id="zak-txn-modal-bg">
+  <div class="modal">
+    <h3 style="margin-top:0;">Nieuwe zakelijke transactie</h3>
+    <label>Rekening</label>
+    <select id="zak-txn-account"></select>
+    <label>Categorie</label>
+    <select id="zak-txn-category"></select>
+    <label>Payee</label>
+    <input type="text" id="zak-txn-payee" placeholder="Bijv. Klant X">
+    <label>Bedrag (negatief = uitgave)</label>
+    <input type="number" step="0.01" id="zak-txn-amount" placeholder="-49.00">
+    <label>Datum</label>
+    <input type="date" id="zak-txn-date">
+    <div class="actions">
+      <button class="btn-cancel" id="zak-txn-cancel">Annuleren</button>
+      <button class="btn-save" id="zak-txn-save">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="zak-cat-modal-bg">
+  <div class="modal">
+    <h3 style="margin-top:0;">Zakelijke categorie</h3>
+    <label>Naam</label>
+    <input type="text" id="zak-cat-name">
+    <div class="actions">
+      <button class="btn-cancel" id="zak-cat-cancel">Annuleren</button>
+      <button class="btn-save" id="zak-cat-save">Opslaan</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal-bg" id="txn-modal-bg">
   <div class="modal">
@@ -189,16 +244,19 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v0.1';
+const APP_VERSION = 'v1.1';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Tab switching ----
+let activeTab = 'budget';
 document.querySelectorAll('nav button').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     document.querySelectorAll('main > div').forEach(d => d.style.display = 'none');
     document.getElementById('tab-' + btn.dataset.tab).style.display = 'block';
+    activeTab = btn.dataset.tab;
+    if (activeTab === 'zakelijk') loadZakelijk();
   });
 });
 
@@ -220,6 +278,7 @@ async function loadBudget() {
   const { data: cats, error: cErr } = await sb
     .from('categories')
     .select('id, parent_id, name, sort_order')
+    .eq('scope', 'prive')
     .order('sort_order');
   if (cErr) { console.error(cErr); return; }
 
@@ -246,8 +305,8 @@ async function loadBudget() {
   const expectedMap = {};
   (recurringRows || []).forEach(r => { if (r.category_id) expectedMap[r.category_id] = (expectedMap[r.category_id] || 0) + Number(r.amount); });
 
-  // Ready to Assign: alle ooit binnengekomen ongecategoriseerde transacties min alles wat ooit is toegewezen
-  const { data: unassignedTxns } = await sb.from('transactions').select('amount').is('category_id', null);
+  // Ready to Assign: alle ooit binnengekomen ongecategoriseerde privé-transacties min alles wat ooit is toegewezen
+  const { data: unassignedTxns } = await sb.from('transactions').select('amount, accounts!inner(scope)').is('category_id', null).eq('accounts.scope', 'prive');
   const totalUnassigned = (unassignedTxns || []).reduce((s, r) => s + Number(r.amount), 0);
   const { data: allBudgetRows } = await sb.from('budget_months').select('assigned');
   const totalAssignedEver = (allBudgetRows || []).reduce((s, r) => s + Number(r.assigned), 0);
@@ -255,6 +314,12 @@ async function loadBudget() {
   const rtaEl = document.getElementById('rta-amount');
   rtaEl.textContent = formatEuro(rta);
   rtaEl.className = 'amount ' + (rta >= 0 ? 'positive' : 'negative');
+
+  const { data: allAccountsForTotal } = await sb.from('accounts').select('id, starting_balance');
+  const { data: allTxnsForTotal } = await sb.from('transactions').select('amount');
+  let combinedTotal = (allAccountsForTotal || []).reduce((s, a) => s + Number(a.starting_balance), 0);
+  combinedTotal += (allTxnsForTotal || []).reduce((s, t) => s + Number(t.amount), 0);
+  document.getElementById('combined-total').textContent = formatEuro(combinedTotal);
 
   const container = document.getElementById('budget-groups');
   if (!cats || cats.length === 0) {
@@ -303,8 +368,8 @@ async function loadBudget() {
 
 // ---- Quick-add transaction modal ----
 async function openTxnModal() {
-  const { data: accounts } = await sb.from('accounts').select('id, name').order('sort_order');
-  const { data: categories } = await sb.from('categories').select('id, name, parent_id').order('sort_order');
+  const { data: accounts } = await sb.from('accounts').select('id, name').eq('scope', 'prive').order('sort_order');
+  const { data: categories } = await sb.from('categories').select('id, name, parent_id').eq('scope', 'prive').order('sort_order');
   const hasChildren = new Set((categories || []).filter(c => c.parent_id).map(c => c.parent_id));
   const leafCats = (categories || []).filter(c => !hasChildren.has(c.id));
   const nameById = {}; (categories || []).forEach(c => nameById[c.id] = c.name);
@@ -336,7 +401,10 @@ async function saveTxn() {
   loadTransactions();
 }
 
-document.getElementById('fab-add').addEventListener('click', openTxnModal);
+document.getElementById('fab-add').addEventListener('click', () => {
+  if (activeTab === 'zakelijk') openZakTxnModal();
+  else openTxnModal();
+});
 document.getElementById('txn-cancel').addEventListener('click', closeTxnModal);
 document.getElementById('txn-save').addEventListener('click', saveTxn);
 
@@ -501,7 +569,7 @@ async function loadAccounts() {
   if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Nog geen rekeningen.</div>'; return; }
   el.innerHTML = data.map(a => `
     <div class="acc-row">
-      <div>${a.name}</div>
+      <div>${a.name} ${a.scope === 'zakelijk' ? '<span style="font-size:10px; color:#888; border:1px solid #ccc; border-radius:4px; padding:1px 5px; margin-left:4px;">zakelijk</span>' : ''}</div>
       <div>${formatEuro(a.starting_balance)}</div>
     </div>
   `).join('');
@@ -514,7 +582,7 @@ loadCategoryManager();
 
 // ---- Categorie-beheer (boomstructuur) ----
 async function loadCategoryManager() {
-  const { data: cats, error } = await sb.from('categories').select('id, parent_id, name, sort_order').order('sort_order');
+  const { data: cats, error } = await sb.from('categories').select('id, parent_id, name, sort_order').eq('scope', 'prive').order('sort_order');
   if (error) { console.error(error); return; }
   const el = document.getElementById('categories-tree');
   if (!cats || cats.length === 0) { el.innerHTML = '<div class="empty">Nog geen categorieën.</div>'; return; }
@@ -653,7 +721,7 @@ let catModalEditId = null;
 async function openCatModal(mode, editId, presetParentId) {
   catModalMode = mode;
   catModalEditId = editId;
-  const { data: cats } = await sb.from('categories').select('id, parent_id, name').order('sort_order');
+  const { data: cats } = await sb.from('categories').select('id, parent_id, name').eq('scope', 'prive').order('sort_order');
   const excluded = editId ? getDescendantIds(cats, editId).add(Number(editId)) : new Set();
   const options = (cats || []).filter(c => !excluded.has(c.id))
     .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
@@ -684,7 +752,7 @@ document.getElementById('cat-save').addEventListener('click', async () => {
     const { error } = await sb.from('categories').update({ name, parent_id }).eq('id', catModalEditId);
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
   } else {
-    const { error } = await sb.from('categories').insert({ name, parent_id });
+    const { error } = await sb.from('categories').insert({ name, parent_id, scope: 'prive' });
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
   }
   document.getElementById('cat-modal-bg').classList.remove('open');
@@ -706,6 +774,158 @@ async function deleteCategory(id) {
   }
   loadCategoryManager();
   loadBudget();
+}
+
+// ---- Zakelijk ----
+async function loadZakelijk() {
+  const { startStr, endStr } = monthBounds();
+
+  const { data: zakAccounts } = await sb.from('accounts').select('id, name').eq('scope', 'zakelijk').order('sort_order');
+  const { data: zakCats } = await sb.from('categories').select('id, name').eq('scope', 'zakelijk').order('sort_order');
+
+  const { data: zakTxns } = await sb.from('transactions')
+    .select('id, date, payee, amount, category_id, categories(name), accounts!inner(scope)')
+    .eq('accounts.scope', 'zakelijk')
+    .gte('date', startStr).lt('date', endStr);
+
+  const perCat = {};
+  let inkomsten = 0, uitgaven = 0;
+  (zakTxns || []).forEach(t => {
+    const amt = Number(t.amount);
+    if (t.category_id) perCat[t.category_id] = (perCat[t.category_id] || 0) + amt;
+    if (amt >= 0) inkomsten += amt; else uitgaven += amt;
+  });
+  const resultaat = inkomsten + uitgaven;
+
+  document.getElementById('zak-inkomsten').textContent = formatEuro(inkomsten);
+  document.getElementById('zak-uitgaven').textContent = formatEuro(uitgaven);
+  const resEl = document.getElementById('zak-resultaat-amount');
+  resEl.textContent = formatEuro(resultaat);
+  resEl.className = 'amount ' + (resultaat >= 0 ? 'positive' : 'negative');
+
+  const catsEl = document.getElementById('zak-categories-list');
+  if (!zakCats || zakCats.length === 0) {
+    catsEl.innerHTML = '<div class="empty">Nog geen zakelijke categorieën.</div>';
+  } else {
+    catsEl.innerHTML = zakCats.map(c => `
+      <div class="cat-tree-row" data-zakcat="${c.id}">
+        <div>${c.name}</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="avail ${(perCat[c.id] || 0) >= 0 ? 'positive' : 'negative'}">${formatEuro(perCat[c.id] || 0)}</div>
+          <div class="cat-actions">
+            <button data-zak-action="edit" data-id="${c.id}" title="Hernoemen">✏️</button>
+            <button data-zak-action="delete" data-id="${c.id}" title="Verwijderen">🗑️</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+    catsEl.querySelectorAll('button[data-zak-action]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        if (btn.dataset.zakAction === 'edit') openZakCatModal(id);
+        else deleteZakCategory(id);
+      });
+    });
+  }
+
+  const txnsEl = document.getElementById('zak-transactions-list');
+  if (!zakTxns || zakTxns.length === 0) {
+    txnsEl.innerHTML = '<div class="empty">Nog geen zakelijke transacties.</div>';
+  } else {
+    const sorted = [...zakTxns].sort((a, b) => b.date.localeCompare(a.date));
+    txnsEl.innerHTML = sorted.map(t => `
+      <div class="txn-row" data-txn="${t.id}">
+        <div>
+          <div>${t.payee || '(geen payee)'}</div>
+          <div style="font-size:11px; color:#888;">${t.date} · ${t.categories?.name || 'Ongecategoriseerd'}</div>
+        </div>
+        <div style="color:${t.amount < 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${formatEuro(t.amount)}</div>
+      </div>
+    `).join('');
+    txnsEl.querySelectorAll('.txn-row').forEach(row => {
+      row.addEventListener('click', () => openTxnDetail(row.dataset.txn));
+    });
+  }
+
+  // Bewaar voor de quick-add modal
+  window._zakAccounts = zakAccounts || [];
+  window._zakCats = zakCats || [];
+}
+
+async function openZakTxnModal() {
+  const { data: accounts } = await sb.from('accounts').select('id, name').eq('scope', 'zakelijk').order('sort_order');
+  const { data: categories } = await sb.from('categories').select('id, name').eq('scope', 'zakelijk').order('sort_order');
+  document.getElementById('zak-txn-account').innerHTML = (accounts || []).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  document.getElementById('zak-txn-category').innerHTML = '<option value="">Ongecategoriseerd</option>' +
+    (categories || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('zak-txn-payee').value = '';
+  document.getElementById('zak-txn-amount').value = '';
+  document.getElementById('zak-txn-date').value = new Date().toISOString().slice(0,10);
+  if (!accounts || accounts.length === 0) {
+    alert('Nog geen zakelijke rekening. Voeg er eerst één toe via Supabase (accounts-tabel, type = \'zakelijk\').');
+    return;
+  }
+  document.getElementById('zak-txn-modal-bg').classList.add('open');
+}
+
+document.getElementById('zak-txn-cancel').addEventListener('click', () => {
+  document.getElementById('zak-txn-modal-bg').classList.remove('open');
+});
+
+document.getElementById('zak-txn-save').addEventListener('click', async () => {
+  const account_id = document.getElementById('zak-txn-account').value;
+  const category_id = document.getElementById('zak-txn-category').value || null;
+  const payee = document.getElementById('zak-txn-payee').value;
+  const amount = parseFloat(document.getElementById('zak-txn-amount').value);
+  const date = document.getElementById('zak-txn-date').value;
+  if (!account_id || isNaN(amount) || !date) { alert('Vul rekening, bedrag en datum in.'); return; }
+
+  const { error } = await sb.from('transactions').insert({ account_id, category_id, payee, amount, date });
+  if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
+  document.getElementById('zak-txn-modal-bg').classList.remove('open');
+  loadZakelijk();
+  loadBudget();
+});
+
+document.getElementById('zak-add-cat-btn').addEventListener('click', () => openZakCatModal(null));
+
+let zakCatEditId = null;
+
+function openZakCatModal(editId) {
+  zakCatEditId = editId;
+  if (editId) {
+    const current = (window._zakCats || []).find(c => c.id == editId);
+    document.getElementById('zak-cat-name').value = current ? current.name : '';
+  } else {
+    document.getElementById('zak-cat-name').value = '';
+  }
+  document.getElementById('zak-cat-modal-bg').classList.add('open');
+}
+
+document.getElementById('zak-cat-cancel').addEventListener('click', () => {
+  document.getElementById('zak-cat-modal-bg').classList.remove('open');
+});
+
+document.getElementById('zak-cat-save').addEventListener('click', async () => {
+  const name = document.getElementById('zak-cat-name').value.trim();
+  if (!name) { alert('Vul een naam in.'); return; }
+
+  if (zakCatEditId) {
+    const { error } = await sb.from('categories').update({ name }).eq('id', zakCatEditId);
+    if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
+  } else {
+    const { error } = await sb.from('categories').insert({ name, scope: 'zakelijk' });
+    if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
+  }
+  document.getElementById('zak-cat-modal-bg').classList.remove('open');
+  loadZakelijk();
+});
+
+async function deleteZakCategory(id) {
+  if (!confirm('Deze zakelijke categorie verwijderen?')) return;
+  const { error } = await sb.from('categories').delete().eq('id', id);
+  if (error) { console.error(error); alert('Verwijderen mislukt.'); return; }
+  loadZakelijk();
 }
 
 </script>
