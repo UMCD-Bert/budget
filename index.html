@@ -54,6 +54,9 @@
   .poss-card .poss-name { font-size:12px; padding:6px 4px; }
   .photo-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
   .photo-row img { width:60px; height:60px; object-fit:cover; border-radius:6px; }
+  .photo-thumb { position:relative; width:60px; height:60px; }
+  .photo-thumb img { width:60px; height:60px; object-fit:cover; border-radius:6px; display:block; }
+  .photo-thumb .photo-delete-btn { position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:50%; background:var(--red); color:#fff; border:none; font-size:12px; line-height:1; cursor:pointer; }
   .photo-add-btn { width:60px; height:60px; border-radius:6px; border:1px dashed #aaa; background:none; font-size:22px; color:#888; }
   .txn-row { cursor:pointer; }
   .date-group-heading { font-size:12px; font-weight:bold; color:#555; margin:10px 0 4px 2px; }
@@ -118,7 +121,10 @@
   </div>
 
   <div id="tab-transactions" style="display:none">
-    <button class="btn-cancel" id="add-transfer-btn" style="width:100%; padding:10px; margin-bottom:10px;">⇄ Overschrijving tussen rekeningen</button>
+    <div style="display:flex; gap:8px; margin-bottom:10px;">
+      <button class="btn-save" id="add-txn-btn" style="flex:1; padding:10px;">+ Nieuwe transactie</button>
+      <button class="btn-cancel" id="add-transfer-btn" style="flex:1; padding:10px;">⇄ Overschrijving</button>
+    </div>
     <div style="text-align:left; margin-bottom:6px; display:flex; gap:8px; align-items:center;">
       <button class="select-toggle-btn" id="main-select-toggle">Selecteren</button>
       <button class="select-toggle-btn" id="account-filter-toggle">Filter op rekening</button>
@@ -161,7 +167,7 @@
       <div id="zak-categories-list"><div class="empty">Nog geen zakelijke categorieën.</div></div>
     </div>
     <div class="group">
-      <h3>Transacties <button class="select-toggle-btn" id="zak-select-toggle" style="margin-left:8px;">Selecteren</button></h3>
+      <h3>Transacties <button class="select-toggle-btn" id="zak-select-toggle" style="margin-left:8px;">Selecteren</button> <button class="select-toggle-btn" id="zak-add-txn-btn" style="margin-left:8px;">+ Nieuwe transactie</button></h3>
       <div class="bulk-toolbar" id="zak-bulk-toolbar" style="display:none;">
         <span class="bulk-count">0 geselecteerd</span>
         <button class="bulk-offset-btn" id="zak-bulk-offset">Streep tegen elkaar</button>
@@ -174,7 +180,6 @@
   </div>
 </main>
 
-<button class="fab" id="fab-add">+</button>
 
 <div class="modal-bg" id="zak-txn-modal-bg">
   <div class="modal">
@@ -433,7 +438,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v2.4';
+const APP_VERSION = 'v2.6';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Tab switching ----
@@ -446,6 +451,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     document.getElementById('tab-' + btn.dataset.tab).style.display = 'block';
     activeTab = btn.dataset.tab;
     if (activeTab === 'zakelijk') loadZakelijk();
+    if (activeTab === 'possessions') loadPossessions();
   });
 });
 
@@ -861,11 +867,8 @@ function computeNextDate(dateStr, frequency) {
   return d.toISOString().slice(0, 10);
 }
 
-document.getElementById('fab-add').addEventListener('click', () => {
-  if (activeTab === 'zakelijk') openZakTxnModal();
-  else if (activeTab === 'categories') openCatModal('add', null, null);
-  else openTxnEditor(null);
-});
+document.getElementById('add-txn-btn').addEventListener('click', () => openTxnDetail(null));
+document.getElementById('zak-add-txn-btn').addEventListener('click', () => openZakTxnModal());
 
 // ---- Transactions list with click-to-detail ----
 async function loadTransactions() {
@@ -935,16 +938,51 @@ async function refreshTxnDetailCategories(scope, currentCategoryId) {
 
 function renderReceiptPreview() {
   const el = document.getElementById('receipt-photos');
-  const existingHtml = existingReceipts.map(r => `<img src="${r.foto_url}">`).join('');
-  const stagedHtml = stagedReceiptFiles.map(f => `<img src="${URL.createObjectURL(f)}">`).join('');
-  el.innerHTML = existingHtml + stagedHtml || '';
+  const existingHtml = existingReceipts.map(r => `
+    <div class="photo-thumb"><img src="${r.foto_url}"><button type="button" class="photo-delete-btn" data-kind="existing-receipt" data-id="${r.id}">×</button></div>`).join('');
+  const stagedHtml = stagedReceiptFiles.map((f, i) => `
+    <div class="photo-thumb"><img src="${URL.createObjectURL(f)}"><button type="button" class="photo-delete-btn" data-kind="staged-receipt" data-index="${i}">×</button></div>`).join('');
+  el.innerHTML = existingHtml + stagedHtml;
+  wirePhotoDeleteButtons(el);
 }
 
 function renderAankoopPhotoPreview() {
   const el = document.getElementById('aankoop-photos');
-  const existingHtml = existingPossession ? (existingPossession.possession_photos || []).map(p => `<img src="${p.foto_url}">`).join('') : '';
-  const stagedHtml = stagedAankoopFiles.map(f => `<img src="${URL.createObjectURL(f)}">`).join('');
+  const existingHtml = existingPossession ? (existingPossession.possession_photos || []).map(p => `
+    <div class="photo-thumb"><img src="${p.foto_url}"><button type="button" class="photo-delete-btn" data-kind="existing-aankoop" data-id="${p.id}">×</button></div>`).join('') : '';
+  const stagedHtml = stagedAankoopFiles.map((f, i) => `
+    <div class="photo-thumb"><img src="${URL.createObjectURL(f)}"><button type="button" class="photo-delete-btn" data-kind="staged-aankoop" data-index="${i}">×</button></div>`).join('');
   el.innerHTML = existingHtml + stagedHtml;
+  wirePhotoDeleteButtons(el);
+}
+
+function wirePhotoDeleteButtons(container) {
+  container.querySelectorAll('.photo-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const kind = btn.dataset.kind;
+      if (kind === 'staged-receipt') {
+        stagedReceiptFiles.splice(Number(btn.dataset.index), 1);
+        renderReceiptPreview();
+      } else if (kind === 'staged-aankoop') {
+        stagedAankoopFiles.splice(Number(btn.dataset.index), 1);
+        renderAankoopPhotoPreview();
+      } else if (kind === 'existing-receipt') {
+        if (!confirm('Dit bonnetje verwijderen?')) return;
+        const id = Number(btn.dataset.id);
+        const { error } = await sb.from('transaction_receipts').delete().eq('id', id);
+        if (error) { console.error(error); alert('Verwijderen mislukt.'); return; }
+        existingReceipts = existingReceipts.filter(r => r.id !== id);
+        renderReceiptPreview();
+      } else if (kind === 'existing-aankoop') {
+        if (!confirm('Deze foto verwijderen?')) return;
+        const id = Number(btn.dataset.id);
+        const { error } = await sb.from('possession_photos').delete().eq('id', id);
+        if (error) { console.error(error); alert('Verwijderen mislukt.'); return; }
+        if (existingPossession) existingPossession.possession_photos = (existingPossession.possession_photos || []).filter(p => p.id !== id);
+        renderAankoopPhotoPreview();
+      }
+    });
+  });
 }
 
 async function openTxnDetail(txnId) {
