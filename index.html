@@ -110,6 +110,7 @@
     <div class="rta">
       <div style="font-size:12px; color:#666;">Klaar om toe te wijzen</div>
       <div class="amount" id="rta-amount">€ 0,00</div>
+      <div style="font-size:16px; font-weight:bold; color:var(--green); margin-top:8px;">Geldleeftijd: <span id="money-age">–</span> <span id="money-age-star" style="display:none;">⭐</span></div>
       <div style="font-size:11px; color:#888; margin-top:6px;">Totaal saldo (privé + zakelijk): <span id="combined-total">€ 0,00</span></div>
     </div>
     <div id="budget-groups"><div class="empty">Nog geen categorieën. Voeg er een toe via Supabase of bouw straks de "+"-knop uit.</div></div>
@@ -229,6 +230,7 @@
       <option value="savings">Spaarrekening</option>
       <option value="creditcard">Creditcard</option>
       <option value="cash">Cash</option>
+      <option value="investment">Beleggingsrekening</option>
     </select>
     <label>Bank</label>
     <select id="account-bank"></select>
@@ -257,6 +259,7 @@
       <option value="savings">Spaarrekening</option>
       <option value="creditcard">Creditcard</option>
       <option value="cash">Cash</option>
+      <option value="investment">Beleggingsrekening</option>
     </select>
     <label>Bank</label>
     <select id="acc-detail-bank"></select>
@@ -354,6 +357,9 @@
       </select>
     </div>
 
+    <label>Opmerking (optioneel)</label>
+    <input type="text" id="txn-detail-notitie" placeholder="Korte opmerking">
+
     <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px; display:flex; gap:12px;">
       <div style="flex:1; min-width:0;">
         <label>Bonnetje</label>
@@ -369,7 +375,6 @@
             <option value="kleding">Kleding</option>
             <option value="meubilair">Meubilair</option>
             <option value="apparaten">Apparaten</option>
-            <option value="overig">Overig</option>
           </select>
           <div class="photo-row" id="aankoop-photos"></div>
           <button class="photo-add-btn" id="aankoop-add-photo-btn" style="width:auto; padding:6px 10px; margin-top:6px; font-size:12px;">+ Foto</button>
@@ -402,7 +407,6 @@
       <option value="kleding">Kleding</option>
       <option value="meubilair">Meubilair</option>
       <option value="apparaten">Apparaten</option>
-      <option value="overig">Overig</option>
     </select>
     <label>Notitie</label>
     <input type="text" id="poss-notitie">
@@ -443,7 +447,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v2.8';
+const APP_VERSION = 'v2.9';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Tab switching ----
@@ -787,6 +791,58 @@ async function loadBudget() {
   combinedTotal += (allTxnsForTotal || []).reduce((s, t) => s + Number(t.amount), 0);
   document.getElementById('combined-total').textContent = formatEuro(combinedTotal);
 
+  // Geldleeftijd (YNAB-stijl): mediane FIFO-leeftijd van de laatste 10 privé-uitgaven
+  const { data: priveAccountsForAge } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
+  const { data: priveTxnsForAge } = await sb.from('transactions')
+    .select('date, amount, accounts!inner(scope)')
+    .eq('accounts.scope', 'prive')
+    .order('date', { ascending: true })
+    .order('id', { ascending: true });
+  const earliestDate = (priveTxnsForAge && priveTxnsForAge.length > 0) ? priveTxnsForAge[0].date : new Date().toISOString().slice(0, 10);
+  const ageEntries = [];
+  (priveAccountsForAge || []).forEach(a => { if (Number(a.starting_balance) > 0) ageEntries.push({ date: earliestDate, amount: Number(a.starting_balance) }); });
+  (priveTxnsForAge || []).forEach(t => ageEntries.push({ date: t.date, amount: Number(t.amount) }));
+  ageEntries.sort((a, b) => a.date.localeCompare(b.date));
+
+  const queue = [];
+  const outflowAges = [];
+  ageEntries.forEach(e => {
+    if (e.amount >= 0) {
+      queue.push({ date: e.date, amount: e.amount });
+    } else {
+      let remaining = -e.amount;
+      let lastChunkDate = null;
+      while (remaining > 0.001 && queue.length > 0) {
+        const chunk = queue[0];
+        lastChunkDate = chunk.date;
+        if (chunk.amount <= remaining + 0.001) {
+          remaining -= chunk.amount;
+          queue.shift();
+        } else {
+          chunk.amount -= remaining;
+          remaining = 0;
+        }
+      }
+      if (lastChunkDate) {
+        const ageDays = Math.round((new Date(e.date) - new Date(lastChunkDate)) / 86400000);
+        outflowAges.push(ageDays);
+      }
+    }
+  });
+  const last10Ages = outflowAges.slice(-10);
+  const moneyAgeEl = document.getElementById('money-age');
+  const moneyAgeStarEl = document.getElementById('money-age-star');
+  if (last10Ages.length === 0) {
+    moneyAgeEl.textContent = '–';
+    moneyAgeStarEl.style.display = 'none';
+  } else {
+    const sorted = [...last10Ages].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 === 0 ? Math.round((sorted[mid - 1] + sorted[mid]) / 2) : sorted[mid];
+    moneyAgeEl.textContent = median + ' dagen';
+    moneyAgeStarEl.style.display = median > 30 ? 'inline' : 'none';
+  }
+
   const container = document.getElementById('budget-groups');
   if (!cats || cats.length === 0) {
     container.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
@@ -990,6 +1046,9 @@ function renderAankoopPhotoPreview() {
     <div class="photo-thumb"><img src="${URL.createObjectURL(f)}"><button type="button" class="photo-delete-btn" data-kind="staged-aankoop" data-index="${i}">×</button></div>`).join('');
   el.innerHTML = existingHtml + stagedHtml;
   wirePhotoDeleteButtons(el);
+
+  const totalAankoopPhotos = (existingPossession ? (existingPossession.possession_photos || []).length : 0) + stagedAankoopFiles.length;
+  document.getElementById('aankoop-add-photo-btn').style.display = totalAankoopPhotos >= 1 ? 'none' : 'inline-block';
 }
 
 function wirePhotoDeleteButtons(container) {
@@ -1040,7 +1099,7 @@ async function openTxnDetail(txnId) {
   document.getElementById('aankoop-fields').style.display = 'none';
   document.getElementById('aankoop-start-btn').style.display = 'block';
   document.getElementById('aankoop-naam').value = '';
-  document.getElementById('aankoop-categorie').value = 'overig';
+  document.getElementById('aankoop-categorie').value = 'kleding';
 
   loadPayeeSuggestions();
 
@@ -1054,6 +1113,7 @@ async function openTxnDetail(txnId) {
     document.getElementById('txn-detail-amount').value = Number(txn.amount).toFixed(2);
     setDateValue('txn-detail-date', txn.date);
     document.getElementById('txn-detail-cleared').checked = !!txn.cleared;
+    document.getElementById('txn-detail-notitie').value = txn.notitie || '';
 
     const { data: receipts } = await sb.from('transaction_receipts').select('*').eq('transaction_id', txnId);
     existingReceipts = receipts || [];
@@ -1075,6 +1135,7 @@ async function openTxnDetail(txnId) {
     document.getElementById('txn-detail-amount').value = '';
     setDateValue('txn-detail-date', new Date().toISOString().slice(0, 10));
     document.getElementById('txn-detail-cleared').checked = true;
+    document.getElementById('txn-detail-notitie').value = '';
   }
 
   renderReceiptPreview();
@@ -1105,7 +1166,7 @@ document.getElementById('aankoop-remove-btn').addEventListener('click', async ()
   }
   stagedAankoopFiles = [];
   document.getElementById('aankoop-naam').value = '';
-  document.getElementById('aankoop-categorie').value = 'overig';
+  document.getElementById('aankoop-categorie').value = 'kleding';
   document.getElementById('aankoop-fields').style.display = 'none';
   document.getElementById('aankoop-start-btn').style.display = 'block';
   renderAankoopPhotoPreview();
@@ -1147,14 +1208,15 @@ document.getElementById('txn-detail-save-btn').addEventListener('click', async (
   const amount = parseFloat(document.getElementById('txn-detail-amount').value);
   const date = document.getElementById('txn-detail-date').value;
   const cleared = document.getElementById('txn-detail-cleared').checked;
+  const notitie = document.getElementById('txn-detail-notitie').value;
   if (!account_id || isNaN(amount) || !date) { alert('Vul rekening, bedrag en datum in.'); return; }
 
   let txnId = currentTxnId;
   if (txnId) {
-    const { error } = await sb.from('transactions').update({ account_id, category_id, payee, amount, date, cleared }).eq('id', txnId);
+    const { error } = await sb.from('transactions').update({ account_id, category_id, payee, amount, date, cleared, notitie }).eq('id', txnId);
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
   } else {
-    const { data, error } = await sb.from('transactions').insert({ account_id, category_id, payee, amount, date, cleared }).select().single();
+    const { data, error } = await sb.from('transactions').insert({ account_id, category_id, payee, amount, date, cleared, notitie }).select().single();
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
     txnId = data.id;
 
@@ -1254,12 +1316,12 @@ async function openPossessionDetail(possId, fromTxnId) {
   if (possId) {
     const { data } = await sb.from('possessions').select('*').eq('id', possId).single();
     document.getElementById('poss-name').value = data.name || '';
-    document.getElementById('poss-category').value = data.category || 'overig';
+    document.getElementById('poss-category').value = data.category || 'kleding';
     document.getElementById('poss-notitie').value = data.notitie || '';
     linkedTxnId = data.transaction_id || '';
   } else {
     document.getElementById('poss-name').value = '';
-    document.getElementById('poss-category').value = 'overig';
+    document.getElementById('poss-category').value = 'kleding';
     document.getElementById('poss-notitie').value = '';
     document.getElementById('poss-photos').innerHTML = '';
   }
@@ -1273,6 +1335,7 @@ async function loadPossessionPhotos() {
   if (!currentPossId) { document.getElementById('poss-photos').innerHTML = ''; return; }
   const { data } = await sb.from('possession_photos').select('*').eq('possession_id', currentPossId).order('volgorde');
   document.getElementById('poss-photos').innerHTML = (data || []).map(p => `<img src="${p.foto_url}">`).join('');
+  document.getElementById('poss-add-photo-btn').style.display = (data || []).length >= 1 ? 'none' : 'inline-block';
 }
 
 document.getElementById('poss-add-photo-btn').addEventListener('click', () => {
