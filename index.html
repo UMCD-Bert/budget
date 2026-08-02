@@ -15,7 +15,9 @@
   input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
   input[type=number] { -moz-appearance:textfield; }
   body { font-family: -apple-system, Helvetica, Arial, sans-serif; margin:0; background:var(--bg); color:#222; }
-  header { background:#1b5e20; color:#fff; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; }
+  header { background:#1b5e20; color:#fff; padding:10px 16px; }
+  header .header-top { display:flex; justify-content:space-between; align-items:center; }
+  header .header-kpi { margin-top:4px; font-size:14px; font-weight:bold; text-align:center; }
   header h1 { font-size:18px; margin:0; }
   nav { display:flex; background:#fff; border-bottom:1px solid var(--border); }
   nav button { flex:1; padding:12px; border:none; background:none; font-size:14px; cursor:pointer; }
@@ -92,8 +94,11 @@
 <body>
 
 <header>
-  <h1>Ons Budget</h1>
-  <span id="version">v0.1</span>
+  <div class="header-top">
+    <h1>Ons Budget</h1>
+    <span id="version">v0.1</span>
+  </div>
+  <div class="header-kpi">Geldleeftijd: <span id="header-money-age">–</span> <span id="header-money-age-star" style="display:none;">⭐</span></div>
 </header>
 
 <nav>
@@ -110,7 +115,6 @@
     <div class="rta">
       <div style="font-size:12px; color:#666;">Klaar om toe te wijzen</div>
       <div class="amount" id="rta-amount">€ 0,00</div>
-      <div style="font-size:16px; font-weight:bold; color:var(--green); margin-top:8px;">Geldleeftijd: <span id="money-age">–</span> <span id="money-age-star" style="display:none;">⭐</span></div>
       <div style="font-size:11px; color:#888; margin-top:6px;">Totaal saldo (privé + zakelijk): <span id="combined-total">€ 0,00</span></div>
     </div>
     <div id="budget-groups"><div class="empty">Nog geen categorieën. Voeg er een toe via Supabase of bouw straks de "+"-knop uit.</div></div>
@@ -165,11 +169,24 @@
       </div>
     </div>
     <div class="group">
+      <h3>Rekeningen</h3>
+      <div id="zak-accounts-list"><div class="empty">Nog geen zakelijke rekeningen.</div></div>
+    </div>
+    <div class="group">
       <h3>Categorieën <button class="add-sub-btn" id="zak-add-cat-btn">+ toevoegen</button></h3>
       <div id="zak-categories-list"><div class="empty">Nog geen zakelijke categorieën.</div></div>
     </div>
     <div class="group">
       <h3>Transacties <button class="select-toggle-btn" id="zak-select-toggle" style="margin-left:8px;">Selecteren</button> <button class="select-toggle-btn" id="zak-add-txn-btn" style="margin-left:8px;">+ Nieuwe transactie</button></h3>
+      <div style="text-align:left; margin-bottom:6px;">
+        <button class="select-toggle-btn" id="zak-account-filter-toggle">Filter op rekening</button>
+      </div>
+      <div id="zak-account-filter-panel" style="display:none; background:var(--card); border-radius:8px; padding:10px; margin-bottom:8px;">
+        <div id="zak-account-filter-list"></div>
+        <div style="text-align:right; margin-top:6px;">
+          <button class="select-toggle-btn" id="zak-account-filter-clear">Wis filter</button>
+        </div>
+      </div>
       <div class="bulk-toolbar" id="zak-bulk-toolbar" style="display:none;">
         <span class="bulk-count">0 geselecteerd</span>
         <button class="bulk-offset-btn" id="zak-bulk-offset">Streep tegen elkaar</button>
@@ -177,6 +194,7 @@
         <button id="zak-bulk-move-date">Wijzig datum</button>
         <button class="danger" id="zak-bulk-delete">Verwijderen</button>
       </div>
+      
       <div id="zak-transactions-list"><div class="empty">Nog geen zakelijke transacties.</div></div>
     </div>
   </div>
@@ -325,11 +343,11 @@
     <h3 style="margin-top:0;" id="txn-editor-title">Nieuwe transactie</h3>
     <label>Rekening</label>
     <select id="txn-detail-account"></select>
+    <label>Payee</label>
+    <input type="text" id="txn-detail-payee" list="payee-datalist">
     <label>Categorie</label>
     <input type="text" id="txn-detail-category-search" list="txn-detail-category-datalist" placeholder="Typ om te zoeken, of laat leeg voor Ready to Assign">
     <datalist id="txn-detail-category-datalist"></datalist>
-    <label>Payee</label>
-    <input type="text" id="txn-detail-payee" list="payee-datalist">
     <label>Bedrag (negatief = uitgave)</label>
     <input type="number" step="0.01" id="txn-detail-amount">
     <label>Datum</label>
@@ -447,7 +465,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v2.9';
+const APP_VERSION = 'v3.1';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Tab switching ----
@@ -558,6 +576,7 @@ const bulkModeState = { main: false, acct: false, zak: false };
 const selectedTxnState = { main: new Set(), acct: new Set(), zak: new Set() };
 const collapsedCatIds = new Set();
 const transactionAccountFilter = new Set();
+const zakAccountFilter = new Set();
 
 async function openAccountFilterPanel() {
   const panel = document.getElementById('account-filter-panel');
@@ -593,6 +612,42 @@ document.getElementById('account-filter-clear').addEventListener('click', () => 
   document.querySelectorAll('.account-filter-cb').forEach(cb => cb.checked = false);
   loadTransactions();
   updateAccountFilterBadge();
+});
+
+async function openZakAccountFilterPanel() {
+  const panel = document.getElementById('zak-account-filter-panel');
+  const isOpen = panel.style.display !== 'none';
+  if (isOpen) { panel.style.display = 'none'; return; }
+  const { data: accounts } = await sb.from('accounts').select('id, name, bank').eq('scope', 'zakelijk').order('name');
+  const listEl = document.getElementById('zak-account-filter-list');
+  listEl.innerHTML = (accounts || []).map(a => `
+    <label style="display:flex; align-items:center; gap:6px; padding:4px 0;">
+      <input type="checkbox" class="zak-account-filter-cb" value="${a.id}" ${zakAccountFilter.has(a.id) ? 'checked' : ''}>
+      ${bankLogoHtml(a.bank)}${a.name}
+    </label>
+  `).join('');
+  listEl.querySelectorAll('.zak-account-filter-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const id = Number(cb.value);
+      if (cb.checked) zakAccountFilter.add(id); else zakAccountFilter.delete(id);
+      loadZakelijk();
+      updateZakAccountFilterBadge();
+    });
+  });
+  panel.style.display = 'block';
+}
+
+function updateZakAccountFilterBadge() {
+  const btn = document.getElementById('zak-account-filter-toggle');
+  btn.textContent = zakAccountFilter.size > 0 ? `Filter op rekening (${zakAccountFilter.size})` : 'Filter op rekening';
+}
+
+document.getElementById('zak-account-filter-toggle').addEventListener('click', openZakAccountFilterPanel);
+document.getElementById('zak-account-filter-clear').addEventListener('click', () => {
+  zakAccountFilter.clear();
+  document.querySelectorAll('.zak-account-filter-cb').forEach(cb => cb.checked = false);
+  loadZakelijk();
+  updateZakAccountFilterBadge();
 });
 
 
@@ -740,6 +795,61 @@ function monthBounds() {
   return { monthStr: start.toISOString().slice(0,10), startStr: start.toISOString().slice(0,10), endStr: end.toISOString().slice(0,10) };
 }
 
+async function updateMoneyAge() {
+  // Geldleeftijd (YNAB-stijl): mediane FIFO-leeftijd van de laatste 10 privé-uitgaven
+  const { data: priveAccountsForAge } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
+  const { data: priveTxnsForAge } = await sb.from('transactions')
+    .select('date, amount, accounts!inner(scope)')
+    .eq('accounts.scope', 'prive')
+    .order('date', { ascending: true })
+    .order('id', { ascending: true });
+  const earliestDate = (priveTxnsForAge && priveTxnsForAge.length > 0) ? priveTxnsForAge[0].date : new Date().toISOString().slice(0, 10);
+  const ageEntries = [];
+  (priveAccountsForAge || []).forEach(a => { if (Number(a.starting_balance) > 0) ageEntries.push({ date: earliestDate, amount: Number(a.starting_balance) }); });
+  (priveTxnsForAge || []).forEach(t => ageEntries.push({ date: t.date, amount: Number(t.amount) }));
+  ageEntries.sort((a, b) => a.date.localeCompare(b.date));
+
+  const queue = [];
+  const outflowAges = [];
+  ageEntries.forEach(e => {
+    if (e.amount >= 0) {
+      queue.push({ date: e.date, amount: e.amount });
+    } else {
+      let remaining = -e.amount;
+      let lastChunkDate = null;
+      while (remaining > 0.001 && queue.length > 0) {
+        const chunk = queue[0];
+        lastChunkDate = chunk.date;
+        if (chunk.amount <= remaining + 0.001) {
+          remaining -= chunk.amount;
+          queue.shift();
+        } else {
+          chunk.amount -= remaining;
+          remaining = 0;
+        }
+      }
+      if (lastChunkDate) {
+        const ageDays = Math.round((new Date(e.date) - new Date(lastChunkDate)) / 86400000);
+        outflowAges.push(ageDays);
+      }
+    }
+  });
+  const last10Ages = outflowAges.slice(-10);
+
+  let text = '–';
+  let showStar = false;
+  if (last10Ages.length > 0) {
+    const sorted = [...last10Ages].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 === 0 ? Math.round((sorted[mid - 1] + sorted[mid]) / 2) : sorted[mid];
+    text = median + ' dagen';
+    showStar = median > 30;
+  }
+
+  ['money-age', 'header-money-age'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = text; });
+  ['money-age-star', 'header-money-age-star'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = showStar ? 'inline' : 'none'; });
+}
+
 async function loadBudget() {
   const { monthStr, startStr, endStr } = monthBounds();
 
@@ -791,57 +901,7 @@ async function loadBudget() {
   combinedTotal += (allTxnsForTotal || []).reduce((s, t) => s + Number(t.amount), 0);
   document.getElementById('combined-total').textContent = formatEuro(combinedTotal);
 
-  // Geldleeftijd (YNAB-stijl): mediane FIFO-leeftijd van de laatste 10 privé-uitgaven
-  const { data: priveAccountsForAge } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
-  const { data: priveTxnsForAge } = await sb.from('transactions')
-    .select('date, amount, accounts!inner(scope)')
-    .eq('accounts.scope', 'prive')
-    .order('date', { ascending: true })
-    .order('id', { ascending: true });
-  const earliestDate = (priveTxnsForAge && priveTxnsForAge.length > 0) ? priveTxnsForAge[0].date : new Date().toISOString().slice(0, 10);
-  const ageEntries = [];
-  (priveAccountsForAge || []).forEach(a => { if (Number(a.starting_balance) > 0) ageEntries.push({ date: earliestDate, amount: Number(a.starting_balance) }); });
-  (priveTxnsForAge || []).forEach(t => ageEntries.push({ date: t.date, amount: Number(t.amount) }));
-  ageEntries.sort((a, b) => a.date.localeCompare(b.date));
-
-  const queue = [];
-  const outflowAges = [];
-  ageEntries.forEach(e => {
-    if (e.amount >= 0) {
-      queue.push({ date: e.date, amount: e.amount });
-    } else {
-      let remaining = -e.amount;
-      let lastChunkDate = null;
-      while (remaining > 0.001 && queue.length > 0) {
-        const chunk = queue[0];
-        lastChunkDate = chunk.date;
-        if (chunk.amount <= remaining + 0.001) {
-          remaining -= chunk.amount;
-          queue.shift();
-        } else {
-          chunk.amount -= remaining;
-          remaining = 0;
-        }
-      }
-      if (lastChunkDate) {
-        const ageDays = Math.round((new Date(e.date) - new Date(lastChunkDate)) / 86400000);
-        outflowAges.push(ageDays);
-      }
-    }
-  });
-  const last10Ages = outflowAges.slice(-10);
-  const moneyAgeEl = document.getElementById('money-age');
-  const moneyAgeStarEl = document.getElementById('money-age-star');
-  if (last10Ages.length === 0) {
-    moneyAgeEl.textContent = '–';
-    moneyAgeStarEl.style.display = 'none';
-  } else {
-    const sorted = [...last10Ages].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    const median = sorted.length % 2 === 0 ? Math.round((sorted[mid - 1] + sorted[mid]) / 2) : sorted[mid];
-    moneyAgeEl.textContent = median + ' dagen';
-    moneyAgeStarEl.style.display = median > 30 ? 'inline' : 'none';
-  }
+  await updateMoneyAge();
 
   const container = document.getElementById('budget-groups');
   if (!cats || cats.length === 0) {
@@ -1087,9 +1147,17 @@ async function openTxnDetail(txnId) {
   stagedAankoopFiles = [];
   existingPossession = null;
 
-  const { data: accounts } = await sb.from('accounts').select('id, name, scope').order('name');
+  let txn = null;
+  if (txnId) {
+    const { data, error } = await sb.from('transactions').select('*, accounts(scope)').eq('id', txnId).single();
+    if (error) { console.error(error); return; }
+    txn = data;
+  }
+  const targetScope = txn ? (txn.accounts?.scope || 'prive') : 'prive';
+
+  const { data: accounts } = await sb.from('accounts').select('id, name, scope').eq('scope', targetScope).order('name');
   document.getElementById('txn-detail-account').innerHTML = (accounts || [])
-    .map(a => `<option value="${a.id}">${a.name} (${a.scope === 'zakelijk' ? 'zakelijk' : 'privé'})</option>`).join('');
+    .map(a => `<option value="${a.id}">${a.name}</option>`).join('');
 
   document.getElementById('txn-detail-delete-btn').style.display = txnId ? 'block' : 'none';
   document.getElementById('txn-detail-recurring-wrap').style.display = txnId ? 'none' : 'flex';
@@ -1103,12 +1171,10 @@ async function openTxnDetail(txnId) {
 
   loadPayeeSuggestions();
 
-  if (txnId) {
+  if (txn) {
     document.getElementById('txn-editor-title').textContent = 'Transactie bewerken';
-    const { data: txn, error } = await sb.from('transactions').select('*, accounts(scope)').eq('id', txnId).single();
-    if (error) { console.error(error); return; }
     document.getElementById('txn-detail-account').value = txn.account_id;
-    await refreshTxnDetailCategories(txn.accounts?.scope || 'prive', txn.category_id);
+    await refreshTxnDetailCategories(targetScope, txn.category_id);
     document.getElementById('txn-detail-payee').value = txn.payee || '';
     document.getElementById('txn-detail-amount').value = Number(txn.amount).toFixed(2);
     setDateValue('txn-detail-date', txn.date);
@@ -1128,8 +1194,10 @@ async function openTxnDetail(txnId) {
     }
   } else {
     document.getElementById('txn-editor-title').textContent = 'Nieuwe transactie';
-    const priveAcc = (accounts || []).find(a => a.scope === 'prive');
-    document.getElementById('txn-detail-account').value = priveAcc ? priveAcc.id : (accounts?.[0]?.id || '');
+    let defaultAccountId = null;
+    if (transactionAccountFilter.size === 1) defaultAccountId = [...transactionAccountFilter][0];
+    if (!defaultAccountId) defaultAccountId = (accounts?.[0]?.id || '');
+    document.getElementById('txn-detail-account').value = defaultAccountId;
     await refreshTxnDetailCategories('prive', null);
     document.getElementById('txn-detail-payee').value = '';
     document.getElementById('txn-detail-amount').value = '';
@@ -1146,6 +1214,17 @@ async function openTxnDetail(txnId) {
 document.getElementById('txn-detail-account').addEventListener('change', async function() {
   const { data: acc } = await sb.from('accounts').select('scope').eq('id', this.value).single();
   await refreshTxnDetailCategories(acc?.scope || 'prive', null);
+});
+
+document.getElementById('txn-detail-payee').addEventListener('change', async function() {
+  const payee = this.value.trim();
+  if (!payee) return;
+  const { data } = await sb.from('transactions').select('category_id, date')
+    .eq('payee', payee).order('date', { ascending: false }).order('id', { ascending: false }).limit(1);
+  if (data && data.length > 0 && data[0].category_id) {
+    const entry = Object.entries(txnDetailCatLabelToId).find(([, id]) => id === data[0].category_id);
+    if (entry) document.getElementById('txn-detail-category-search').value = entry[0];
+  }
 });
 
 document.getElementById('txn-detail-recurring').addEventListener('change', function() {
@@ -1389,7 +1468,7 @@ document.getElementById('poss-save').addEventListener('click', async () => {
 loadPossessions();
 
 async function loadAccounts() {
-  const { data, error } = await sb.from('accounts').select('*').order('name');
+  const { data, error } = await sb.from('accounts').select('*').eq('scope', 'prive').order('name');
   if (error) { console.error(error); return; }
   const el = document.getElementById('accounts-list');
   if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Nog geen rekeningen.</div>'; return; }
@@ -1398,16 +1477,18 @@ async function loadAccounts() {
   const txnSumByAccount = {};
   (allTxns || []).forEach(t => { txnSumByAccount[t.account_id] = (txnSumByAccount[t.account_id] || 0) + Number(t.amount); });
 
+  const total = data.reduce((s, a) => s + Number(a.starting_balance) + (txnSumByAccount[a.id] || 0), 0);
+
   el.innerHTML = data.map(a => {
     const balance = Number(a.starting_balance) + (txnSumByAccount[a.id] || 0);
     return `
     <div class="acc-row" data-account="${a.id}" style="cursor:pointer;">
-      <div>${bankLogoHtml(a.bank)}${a.name} ${a.scope === 'zakelijk' ? '<span style="font-size:10px; color:#888; border:1px solid #ccc; border-radius:4px; padding:1px 5px; margin-left:4px;">zakelijk</span>' : ''}</div>
+      <div>${bankLogoHtml(a.bank)}${a.name}</div>
       <div>${formatEuro(balance)}</div>
     </div>`;
-  }).join('');
+  }).join('') + `<div class="acc-row" style="font-weight:bold; background:#eee;"><div>Totaal</div><div>${formatEuro(total)}</div></div>`;
 
-  el.querySelectorAll('.acc-row').forEach(row => {
+  el.querySelectorAll('.acc-row[data-account]').forEach(row => {
     row.addEventListener('click', () => openAccountDetail(row.dataset.account));
   });
 }
@@ -1879,13 +1960,32 @@ async function deleteCategory(id) {
 async function loadZakelijk() {
   const { startStr, endStr } = monthBounds();
 
-  const { data: zakAccounts } = await sb.from('accounts').select('id, name').eq('scope', 'zakelijk').order('name');
+  const { data: zakAccounts } = await sb.from('accounts').select('id, name, bank, starting_balance').eq('scope', 'zakelijk').order('name');
   const { data: zakCats } = await sb.from('categories').select('id, name').eq('scope', 'zakelijk').order('name');
 
-  const { data: zakTxns } = await sb.from('transactions')
+  const { data: allZakTxnsForBalance } = await sb.from('transactions').select('account_id, amount, accounts!inner(scope)').eq('accounts.scope', 'zakelijk');
+  const zakTxnSumByAccount = {};
+  (allZakTxnsForBalance || []).forEach(t => { zakTxnSumByAccount[t.account_id] = (zakTxnSumByAccount[t.account_id] || 0) + Number(t.amount); });
+  const accEl = document.getElementById('zak-accounts-list');
+  if (!zakAccounts || zakAccounts.length === 0) {
+    accEl.innerHTML = '<div class="empty">Nog geen zakelijke rekeningen.</div>';
+  } else {
+    const zakTotal = zakAccounts.reduce((s, a) => s + Number(a.starting_balance) + (zakTxnSumByAccount[a.id] || 0), 0);
+    accEl.innerHTML = zakAccounts.map(a => {
+      const balance = Number(a.starting_balance) + (zakTxnSumByAccount[a.id] || 0);
+      return `<div class="acc-row" data-account="${a.id}" style="cursor:pointer;"><div>${bankLogoHtml(a.bank)}${a.name}</div><div>${formatEuro(balance)}</div></div>`;
+    }).join('') + `<div class="acc-row" style="font-weight:bold; background:#eee;"><div>Totaal</div><div>${formatEuro(zakTotal)}</div></div>`;
+    accEl.querySelectorAll('.acc-row[data-account]').forEach(row => {
+      row.addEventListener('click', () => openAccountDetail(row.dataset.account));
+    });
+  }
+
+  let zakTxnQuery = sb.from('transactions')
     .select('id, date, payee, amount, cleared, link_type, category_id, categories(name), accounts!inner(scope, name, bank)')
     .eq('accounts.scope', 'zakelijk')
     .gte('date', startStr).lt('date', endStr);
+  if (zakAccountFilter.size > 0) zakTxnQuery = zakTxnQuery.in('account_id', [...zakAccountFilter]);
+  const { data: zakTxns } = await zakTxnQuery;
 
   const perCat = {};
   let inkomsten = 0, uitgaven = 0;
