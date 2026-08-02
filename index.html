@@ -59,6 +59,8 @@
   .date-group-heading { font-size:12px; font-weight:bold; color:#555; margin:10px 0 4px 2px; }
   .date-group-heading:first-child { margin-top:0; }
   .txn-cleared-cb { margin-right:8px; width:18px; height:18px; flex-shrink:0; }
+  .txn-cleared-mark { cursor:pointer; font-size:14px; color:#ccc; user-select:none; padding:2px; }
+  .txn-cleared-mark.is-cleared { color:var(--green); }
   .txn-select-cb { margin-right:8px; width:18px; height:18px; flex-shrink:0; }
   .bulk-toolbar { position:sticky; top:0; z-index:5; background:#fffde7; border:1px solid #ffe082; border-radius:8px; padding:8px; margin-bottom:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:12px; }
   .bulk-toolbar button { padding:6px 10px; border:none; border-radius:6px; background:var(--green); color:#fff; font-size:12px; cursor:pointer; }
@@ -117,8 +119,15 @@
 
   <div id="tab-transactions" style="display:none">
     <button class="btn-cancel" id="add-transfer-btn" style="width:100%; padding:10px; margin-bottom:10px;">⇄ Overschrijving tussen rekeningen</button>
-    <div style="text-align:right; margin-bottom:6px;">
+    <div style="text-align:left; margin-bottom:6px; display:flex; gap:8px; align-items:center;">
       <button class="select-toggle-btn" id="main-select-toggle">Selecteren</button>
+      <button class="select-toggle-btn" id="account-filter-toggle">Filter op rekening</button>
+    </div>
+    <div id="account-filter-panel" style="display:none; background:var(--card); border-radius:8px; padding:10px; margin-bottom:8px;">
+      <div id="account-filter-list"></div>
+      <div style="text-align:right; margin-top:6px;">
+        <button class="select-toggle-btn" id="account-filter-clear">Wis filter</button>
+      </div>
     </div>
     <div class="bulk-toolbar" id="main-bulk-toolbar" style="display:none;">
       <span class="bulk-count">0 geselecteerd</span>
@@ -262,7 +271,7 @@
         <div id="acc-detail-month-label" style="font-size:13px; text-transform:capitalize; color:#777;"></div>
         <button class="btn-cancel" id="acc-detail-next-month" style="padding:4px 10px;">›</button>
       </div>
-      <div style="text-align:right; margin-bottom:6px;">
+      <div style="text-align:left; margin-bottom:6px;">
         <button class="select-toggle-btn" id="acct-select-toggle">Selecteren</button>
       </div>
       <div class="bulk-toolbar" id="acct-bulk-toolbar" style="display:none;">
@@ -300,53 +309,11 @@
   </div>
 </div>
 
-<div class="modal-bg" id="txn-modal-bg">
-  <div class="modal">
-    <h3 style="margin-top:0;">Nieuwe transactie</h3>
-    <label>Rekening</label>
-    <select id="txn-account"></select>
-    <label>Categorie</label>
-    <input type="text" id="txn-category-search" list="txn-category-datalist" placeholder="Typ om te zoeken, of laat leeg voor Ready to Assign">
-    <datalist id="txn-category-datalist"></datalist>
-    <datalist id="payee-datalist"></datalist>
-    <label>Payee</label>
-    <input type="text" id="txn-payee" list="payee-datalist" placeholder="Bijv. Albert Heijn">
-    <label>Bedrag (negatief = uitgave)</label>
-    <input type="number" step="0.01" id="txn-amount" placeholder="-12.50">
-    <label>Datum</label>
-    <div class="date-picker-wrap">
-      <input type="text" id="txn-date-display" readonly placeholder="dd-mm-jjjj" style="cursor:pointer;">
-      <input type="hidden" id="txn-date">
-      <div class="dp-popup" id="txn-date-popup" style="display:none;"></div>
-    </div>
-    <label style="display:flex; align-items:center; gap:6px; margin-top:10px;">
-      <input type="checkbox" id="txn-cleared" checked style="width:auto;"> Cleared
-    </label>
-    <label style="display:flex; align-items:center; gap:6px;">
-      <input type="checkbox" id="txn-recurring" style="width:auto;"> Herhalend
-    </label>
-    <div id="txn-recurring-freq-wrap" style="display:none;">
-      <label>Frequentie</label>
-      <select id="txn-recurring-freq">
-        <option value="weekly">Elke week</option>
-        <option value="biweekly">Elke 2 weken</option>
-        <option value="4weekly">Elke 4 weken</option>
-        <option value="monthly" selected>Elke maand</option>
-        <option value="2monthly">Elke 2 maanden</option>
-        <option value="3monthly">Elke 3 maanden</option>
-        <option value="yearly">Elk jaar</option>
-      </select>
-    </div>
-    <div class="actions">
-      <button class="btn-cancel" id="txn-cancel">Annuleren</button>
-      <button class="btn-save" id="txn-save">Opslaan</button>
-    </div>
-  </div>
-</div>
+<datalist id="payee-datalist"></datalist>
 
 <div class="modal-bg" id="txn-detail-bg">
   <div class="modal">
-    <h3 style="margin-top:0;">Transactie bewerken</h3>
+    <h3 style="margin-top:0;" id="txn-editor-title">Nieuwe transactie</h3>
     <label>Rekening</label>
     <select id="txn-detail-account"></select>
     <label>Categorie</label>
@@ -365,25 +332,52 @@
     <label style="display:flex; align-items:center; gap:6px; margin-top:10px;">
       <input type="checkbox" id="txn-detail-cleared" style="width:auto;"> Cleared
     </label>
-    <div class="actions">
-      <button class="btn-cancel" id="txn-detail-delete-btn" style="background:var(--red); color:#fff;">Verwijderen</button>
-      <button class="btn-save" id="txn-detail-save-btn">Opslaan</button>
+    <label style="display:flex; align-items:center; gap:6px;" id="txn-detail-recurring-wrap">
+      <input type="checkbox" id="txn-detail-recurring" style="width:auto;"> Herhalend
+    </label>
+    <div id="txn-detail-recurring-freq-wrap" style="display:none;">
+      <label>Frequentie</label>
+      <select id="txn-detail-recurring-freq">
+        <option value="weekly">Elke week</option>
+        <option value="biweekly">Elke 2 weken</option>
+        <option value="4weekly">Elke 4 weken</option>
+        <option value="monthly" selected>Elke maand</option>
+        <option value="2monthly">Elke 2 maanden</option>
+        <option value="3monthly">Elke 3 maanden</option>
+        <option value="yearly">Elk jaar</option>
+      </select>
     </div>
 
     <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
       <label>Bonnetje</label>
       <div class="photo-row" id="receipt-photos"></div>
       <input type="file" id="receipt-file-input" accept="image/*" style="display:none">
-      <div style="margin-top:6px;">
-        <button class="photo-add-btn" id="receipt-add-btn" style="width:auto; padding:6px 12px;">+ Bonnetje toevoegen</button>
+      <button class="photo-add-btn" id="receipt-add-btn" style="width:auto; padding:6px 12px; margin-top:6px;">+ Bonnetje toevoegen</button>
+    </div>
+
+    <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
+      <label>Aankoop (optioneel)</label>
+      <div id="aankoop-fields" style="display:none;">
+        <input type="text" id="aankoop-naam" placeholder="Naam van de aankoop">
+        <select id="aankoop-categorie">
+          <option value="kleding">Kleding</option>
+          <option value="meubilair">Meubilair</option>
+          <option value="apparaten">Apparaten</option>
+          <option value="overig">Overig</option>
+        </select>
+        <div class="photo-row" id="aankoop-photos"></div>
+        <input type="file" id="aankoop-file-input" accept="image/*" style="display:none">
+        <button class="photo-add-btn" id="aankoop-add-photo-btn" style="width:auto; padding:6px 12px; margin-top:6px;">+ Aankoopfoto toevoegen</button>
       </div>
-      <div id="poss-link-section" style="margin-top:16px;">
-        <button class="btn-save" id="make-possession-btn" style="width:100%;">Maak hier een aankoop van</button>
-      </div>
+      <button class="btn-save" id="aankoop-start-btn" style="width:100%;">+ Dit is (ook) een aankoop</button>
     </div>
 
     <div class="actions">
-      <button class="btn-cancel" id="txn-detail-close" style="width:100%;">Sluiten</button>
+      <button class="btn-cancel" id="txn-detail-delete-btn" style="background:var(--red); color:#fff; display:none;">Verwijderen</button>
+      <button class="btn-save" id="txn-detail-save-btn">Opslaan</button>
+    </div>
+    <div class="actions">
+      <button class="btn-cancel" id="txn-detail-close" style="width:100%;">Annuleren</button>
     </div>
   </div>
 </div>
@@ -407,6 +401,9 @@
     <input type="file" id="poss-file-input" accept="image/*" style="display:none">
     <div style="margin-top:6px;">
       <button class="photo-add-btn" id="poss-add-photo-btn" style="width:auto; padding:6px 12px;">+ Foto toevoegen</button>
+    </div>
+    <div class="actions">
+      <button class="btn-cancel" id="poss-goto-txn-btn" style="width:100%;">Ga naar transactie</button>
     </div>
     <div class="actions">
       <button class="btn-cancel" id="poss-cancel">Sluiten</button>
@@ -436,7 +433,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v2.1';
+const APP_VERSION = 'v2.4';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Tab switching ----
@@ -525,7 +522,6 @@ function setupDatePicker(hiddenId) {
   });
 }
 
-setupDatePicker('txn-date');
 setupDatePicker('zak-txn-date');
 setupDatePicker('transfer-date');
 
@@ -546,6 +542,44 @@ function bankSelectOptions(selected) {
 const bulkModeState = { main: false, acct: false, zak: false };
 const selectedTxnState = { main: new Set(), acct: new Set(), zak: new Set() };
 const collapsedCatIds = new Set();
+const transactionAccountFilter = new Set();
+
+async function openAccountFilterPanel() {
+  const panel = document.getElementById('account-filter-panel');
+  const isOpen = panel.style.display !== 'none';
+  if (isOpen) { panel.style.display = 'none'; return; }
+  const { data: accounts } = await sb.from('accounts').select('id, name, bank, scope').order('sort_order');
+  const listEl = document.getElementById('account-filter-list');
+  listEl.innerHTML = (accounts || []).map(a => `
+    <label style="display:flex; align-items:center; gap:6px; padding:4px 0;">
+      <input type="checkbox" class="account-filter-cb" value="${a.id}" ${transactionAccountFilter.has(a.id) ? 'checked' : ''}>
+      ${bankLogoHtml(a.bank)}${a.name} <span style="font-size:10px; color:#888;">${a.scope === 'zakelijk' ? '(zakelijk)' : ''}</span>
+    </label>
+  `).join('');
+  listEl.querySelectorAll('.account-filter-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const id = Number(cb.value);
+      if (cb.checked) transactionAccountFilter.add(id); else transactionAccountFilter.delete(id);
+      loadTransactions();
+      updateAccountFilterBadge();
+    });
+  });
+  panel.style.display = 'block';
+}
+
+function updateAccountFilterBadge() {
+  const btn = document.getElementById('account-filter-toggle');
+  btn.textContent = transactionAccountFilter.size > 0 ? `Filter op rekening (${transactionAccountFilter.size})` : 'Filter op rekening';
+}
+
+document.getElementById('account-filter-toggle').addEventListener('click', openAccountFilterPanel);
+document.getElementById('account-filter-clear').addEventListener('click', () => {
+  transactionAccountFilter.clear();
+  document.querySelectorAll('.account-filter-cb').forEach(cb => cb.checked = false);
+  loadTransactions();
+  updateAccountFilterBadge();
+});
+
 
 function renderTransactionRows(rows, opts) {
   const bulkOn = bulkModeState[opts.context];
@@ -568,24 +602,28 @@ function renderOneTxnRow(t, opts, bulkOn) {
   return `
     <div class="txn-row" data-txn="${t.id}">
       ${bulkOn ? `<input type="checkbox" class="txn-select-cb" data-txn="${t.id}" ${isSelected ? 'checked' : ''}>` : ''}
-      <input type="checkbox" class="txn-cleared-cb" data-txn="${t.id}" ${t.cleared ? 'checked' : ''} title="Cleared">
       ${bankLogo}
-      <div style="flex:1;">
-        <div>${linkIcon}${t.payee || '(geen payee)'}</div>
-        <div style="font-size:11px; color:#888;">${opts.showAccount ? (t.accountName || '') + ' · ' : ''}${t.categoryName || 'Ready to Assign'}</div>
+      <div style="flex:1; min-width:0;">
+        <div style="overflow-wrap:break-word;">${linkIcon}${t.payee || '(geen payee)'}</div>
+        <div style="font-size:11px; color:#888; overflow-wrap:break-word;">${opts.showAccount ? (t.accountName || '') + ' · ' : ''}${t.categoryName || 'Ready to Assign'}</div>
       </div>
-      <div style="text-align:right;">
-        <div style="color:${t.amount < 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${formatEuro(t.amount)}</div>
-        ${t.balanceAfter !== undefined ? `<div style="font-size:11px; color:#888;">saldo: ${formatEuro(t.balanceAfter)}</div>` : ''}
+      <div style="text-align:right; flex-shrink:0; display:flex; align-items:center; gap:6px;">
+        <div>
+          <div style="color:${t.amount < 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${formatEuro(t.amount)}</div>
+          ${t.balanceAfter !== undefined ? `<div style="font-size:11px; color:#888;">saldo: ${formatEuro(t.balanceAfter)}</div>` : ''}
+        </div>
+        <span class="txn-cleared-mark ${t.cleared ? 'is-cleared' : ''}" data-txn="${t.id}" title="Cleared">✓</span>
       </div>
     </div>`;
 }
 
 function wireTransactionRowEvents(container, context) {
-  container.querySelectorAll('.txn-cleared-cb').forEach(cb => {
-    cb.addEventListener('click', (e) => e.stopPropagation());
-    cb.addEventListener('change', async () => {
-      const { error } = await sb.from('transactions').update({ cleared: cb.checked }).eq('id', cb.dataset.txn);
+  container.querySelectorAll('.txn-cleared-mark').forEach(mark => {
+    mark.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const newState = !mark.classList.contains('is-cleared');
+      mark.classList.toggle('is-cleared', newState);
+      const { error } = await sb.from('transactions').update({ cleared: newState }).eq('id', mark.dataset.txn);
       if (error) console.error(error);
     });
   });
@@ -599,7 +637,7 @@ function wireTransactionRowEvents(container, context) {
   });
   container.querySelectorAll('.txn-row').forEach(row => {
     row.addEventListener('click', (e) => {
-      if (e.target.classList.contains('txn-cleared-cb') || e.target.classList.contains('txn-select-cb')) return;
+      if (e.target.classList.contains('txn-cleared-mark') || e.target.classList.contains('txn-select-cb')) return;
       if (bulkModeState[context]) {
         const cb = row.querySelector('.txn-select-cb');
         cb.checked = !cb.checked;
@@ -783,7 +821,7 @@ async function loadBudget() {
   });
 }
 
-// ---- Quick-add transaction modal ----
+// ---- Transactie toevoegen/bewerken (één scherm) ----
 let txnCatLabelToId = {};
 
 async function loadPayeeSuggestions() {
@@ -809,31 +847,6 @@ async function buildLeafCategoryOptions(scope) {
   return orderedLeaves;
 }
 
-async function openTxnModal() {
-  const { data: accounts } = await sb.from('accounts').select('id, name').eq('scope', 'prive').order('sort_order');
-  const orderedLeaves = await buildLeafCategoryOptions('prive');
-
-  txnCatLabelToId = {};
-  orderedLeaves.forEach(l => txnCatLabelToId[l.label] = l.id);
-
-  document.getElementById('txn-account').innerHTML = (accounts || []).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-  document.getElementById('txn-category-datalist').innerHTML = orderedLeaves.map(l => `<option value="${l.label}">`).join('');
-  document.getElementById('txn-category-search').value = '';
-  document.getElementById('txn-payee').value = '';
-  loadPayeeSuggestions();
-  document.getElementById('txn-amount').value = '';
-  setDateValue('txn-date', new Date().toISOString().slice(0,10));
-  document.getElementById('txn-cleared').checked = true;
-  document.getElementById('txn-recurring').checked = false;
-  document.getElementById('txn-recurring-freq-wrap').style.display = 'none';
-  document.getElementById('txn-recurring-freq').value = 'monthly';
-  document.getElementById('txn-modal-bg').classList.add('open');
-}
-
-document.getElementById('txn-recurring').addEventListener('change', function() {
-  document.getElementById('txn-recurring-freq-wrap').style.display = this.checked ? 'block' : 'none';
-});
-
 function computeNextDate(dateStr, frequency) {
   const d = new Date(dateStr + 'T00:00:00');
   switch (frequency) {
@@ -848,47 +861,11 @@ function computeNextDate(dateStr, frequency) {
   return d.toISOString().slice(0, 10);
 }
 
-function closeTxnModal() {
-  document.getElementById('txn-modal-bg').classList.remove('open');
-}
-
-async function saveTxn() {
-  const account_id = document.getElementById('txn-account').value;
-  const catLabel = document.getElementById('txn-category-search').value.trim();
-  if (catLabel && !txnCatLabelToId[catLabel]) {
-    alert('Kies een bestaande categorie uit de lijst, of laat het veld leeg voor Ready to Assign.');
-    return;
-  }
-  const category_id = catLabel ? txnCatLabelToId[catLabel] : null;
-  const payee = document.getElementById('txn-payee').value;
-  const amount = parseFloat(document.getElementById('txn-amount').value);
-  const date = document.getElementById('txn-date').value;
-  const cleared = document.getElementById('txn-cleared').checked;
-  if (!account_id || isNaN(amount) || !date) { alert('Vul rekening, bedrag en datum in.'); return; }
-
-  const { error } = await sb.from('transactions').insert({ account_id, category_id, payee, amount, date, cleared });
-  if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
-
-  if (document.getElementById('txn-recurring').checked) {
-    const frequency = document.getElementById('txn-recurring-freq').value;
-    const next_date = computeNextDate(date, frequency);
-    const { error: recErr } = await sb.from('recurring_transactions').insert({ account_id, category_id, payee, amount, frequency, next_date, active: true });
-    if (recErr) console.error(recErr);
-  }
-
-  closeTxnModal();
-  loadBudget();
-  loadAccounts();
-  loadTransactions();
-}
-
 document.getElementById('fab-add').addEventListener('click', () => {
   if (activeTab === 'zakelijk') openZakTxnModal();
   else if (activeTab === 'categories') openCatModal('add', null, null);
-  else openTxnModal();
+  else openTxnEditor(null);
 });
-document.getElementById('txn-cancel').addEventListener('click', closeTxnModal);
-document.getElementById('txn-save').addEventListener('click', saveTxn);
 
 // ---- Transactions list with click-to-detail ----
 async function loadTransactions() {
@@ -908,15 +885,17 @@ async function loadTransactions() {
     balanceAfter[t.id] = running;
   });
 
-  const { data, error: dErr } = await sb
+  let query = sb
     .from('transactions')
     .select('id, date, payee, amount, cleared, account_id, link_type, categories(name)')
     .order('date', { ascending: false })
     .order('id', { ascending: false })
     .limit(50);
+  if (transactionAccountFilter.size > 0) query = query.in('account_id', [...transactionAccountFilter]);
+  const { data, error: dErr } = await query;
   if (dErr) { console.error(dErr); return; }
   const el = document.getElementById('transactions-list');
-  if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Nog geen transacties.</div>'; return; }
+  if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Geen transacties gevonden.</div>'; return; }
   const chronological = [...data].reverse(); // register-stijl: oud boven, nieuw onder
   const rows = chronological.map(t => ({
     id: t.id, date: t.date, payee: t.payee, amount: Number(t.amount), cleared: t.cleared,
@@ -936,6 +915,10 @@ document.getElementById('main-bulk-delete').addEventListener('click', () => bulk
 
 let currentTxnId = null;
 let txnDetailCatLabelToId = {};
+let stagedReceiptFiles = [];
+let existingReceipts = [];
+let stagedAankoopFiles = [];
+let existingPossession = null;
 
 async function refreshTxnDetailCategories(scope, currentCategoryId) {
   const orderedLeaves = await buildLeafCategoryOptions(scope);
@@ -950,30 +933,117 @@ async function refreshTxnDetailCategories(scope, currentCategoryId) {
   }
 }
 
+function renderReceiptPreview() {
+  const el = document.getElementById('receipt-photos');
+  const existingHtml = existingReceipts.map(r => `<img src="${r.foto_url}">`).join('');
+  const stagedHtml = stagedReceiptFiles.map(f => `<img src="${URL.createObjectURL(f)}">`).join('');
+  el.innerHTML = existingHtml + stagedHtml || '';
+}
+
+function renderAankoopPhotoPreview() {
+  const el = document.getElementById('aankoop-photos');
+  const existingHtml = existingPossession ? (existingPossession.possession_photos || []).map(p => `<img src="${p.foto_url}">`).join('') : '';
+  const stagedHtml = stagedAankoopFiles.map(f => `<img src="${URL.createObjectURL(f)}">`).join('');
+  el.innerHTML = existingHtml + stagedHtml;
+}
+
 async function openTxnDetail(txnId) {
   currentTxnId = txnId;
-  const { data: txn, error } = await sb.from('transactions').select('*, accounts(scope)').eq('id', txnId).single();
-  if (error) { console.error(error); return; }
+  stagedReceiptFiles = [];
+  existingReceipts = [];
+  stagedAankoopFiles = [];
+  existingPossession = null;
 
   const { data: accounts } = await sb.from('accounts').select('id, name, scope').order('sort_order');
   document.getElementById('txn-detail-account').innerHTML = (accounts || [])
     .map(a => `<option value="${a.id}">${a.name} (${a.scope === 'zakelijk' ? 'zakelijk' : 'privé'})</option>`).join('');
-  document.getElementById('txn-detail-account').value = txn.account_id;
 
-  await refreshTxnDetailCategories(txn.accounts?.scope || 'prive', txn.category_id);
+  document.getElementById('txn-detail-delete-btn').style.display = txnId ? 'block' : 'none';
+  document.getElementById('txn-detail-recurring-wrap').style.display = txnId ? 'none' : 'flex';
+  document.getElementById('txn-detail-recurring-freq-wrap').style.display = 'none';
+  document.getElementById('txn-detail-recurring').checked = false;
 
-  document.getElementById('txn-detail-payee').value = txn.payee || '';
-  document.getElementById('txn-detail-amount').value = Number(txn.amount).toFixed(2);
-  setDateValue('txn-detail-date', txn.date);
-  document.getElementById('txn-detail-cleared').checked = !!txn.cleared;
+  document.getElementById('aankoop-fields').style.display = 'none';
+  document.getElementById('aankoop-start-btn').style.display = 'block';
+  document.getElementById('aankoop-naam').value = '';
+  document.getElementById('aankoop-categorie').value = 'overig';
 
-  await loadReceiptPhotos();
+  loadPayeeSuggestions();
+
+  if (txnId) {
+    document.getElementById('txn-editor-title').textContent = 'Transactie bewerken';
+    const { data: txn, error } = await sb.from('transactions').select('*, accounts(scope)').eq('id', txnId).single();
+    if (error) { console.error(error); return; }
+    document.getElementById('txn-detail-account').value = txn.account_id;
+    await refreshTxnDetailCategories(txn.accounts?.scope || 'prive', txn.category_id);
+    document.getElementById('txn-detail-payee').value = txn.payee || '';
+    document.getElementById('txn-detail-amount').value = Number(txn.amount).toFixed(2);
+    setDateValue('txn-detail-date', txn.date);
+    document.getElementById('txn-detail-cleared').checked = !!txn.cleared;
+
+    const { data: receipts } = await sb.from('transaction_receipts').select('*').eq('transaction_id', txnId);
+    existingReceipts = receipts || [];
+
+    const { data: poss } = await sb.from('possessions').select('*, possession_photos(*)').eq('transaction_id', txnId).maybeSingle();
+    if (poss) {
+      existingPossession = poss;
+      document.getElementById('aankoop-fields').style.display = 'block';
+      document.getElementById('aankoop-start-btn').style.display = 'none';
+      document.getElementById('aankoop-naam').value = poss.name;
+      document.getElementById('aankoop-categorie').value = poss.category;
+    }
+  } else {
+    document.getElementById('txn-editor-title').textContent = 'Nieuwe transactie';
+    const priveAcc = (accounts || []).find(a => a.scope === 'prive');
+    document.getElementById('txn-detail-account').value = priveAcc ? priveAcc.id : (accounts?.[0]?.id || '');
+    await refreshTxnDetailCategories('prive', null);
+    document.getElementById('txn-detail-payee').value = '';
+    document.getElementById('txn-detail-amount').value = '';
+    setDateValue('txn-detail-date', new Date().toISOString().slice(0, 10));
+    document.getElementById('txn-detail-cleared').checked = true;
+  }
+
+  renderReceiptPreview();
+  renderAankoopPhotoPreview();
   document.getElementById('txn-detail-bg').classList.add('open');
 }
 
 document.getElementById('txn-detail-account').addEventListener('change', async function() {
   const { data: acc } = await sb.from('accounts').select('scope').eq('id', this.value).single();
   await refreshTxnDetailCategories(acc?.scope || 'prive', null);
+});
+
+document.getElementById('txn-detail-recurring').addEventListener('change', function() {
+  document.getElementById('txn-detail-recurring-freq-wrap').style.display = this.checked ? 'block' : 'none';
+});
+
+document.getElementById('aankoop-start-btn').addEventListener('click', () => {
+  document.getElementById('aankoop-fields').style.display = 'block';
+  document.getElementById('aankoop-start-btn').style.display = 'none';
+});
+
+document.getElementById('receipt-add-btn').addEventListener('click', () => {
+  document.getElementById('receipt-file-input').click();
+});
+
+document.getElementById('receipt-file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  stagedReceiptFiles.push(file);
+  renderReceiptPreview();
+  e.target.value = '';
+});
+
+document.getElementById('aankoop-add-photo-btn').addEventListener('click', () => {
+  document.getElementById('aankoop-file-input').click();
+});
+
+document.getElementById('aankoop-file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  stagedAankoopFiles.push(file);
+  renderAankoopPhotoPreview();
+  e.target.value = '';
 });
 
 document.getElementById('txn-detail-save-btn').addEventListener('click', async () => {
@@ -990,16 +1060,66 @@ document.getElementById('txn-detail-save-btn').addEventListener('click', async (
   const cleared = document.getElementById('txn-detail-cleared').checked;
   if (!account_id || isNaN(amount) || !date) { alert('Vul rekening, bedrag en datum in.'); return; }
 
-  const { error } = await sb.from('transactions').update({ account_id, category_id, payee, amount, date, cleared }).eq('id', currentTxnId);
-  if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
+  let txnId = currentTxnId;
+  if (txnId) {
+    const { error } = await sb.from('transactions').update({ account_id, category_id, payee, amount, date, cleared }).eq('id', txnId);
+    if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
+  } else {
+    const { data, error } = await sb.from('transactions').insert({ account_id, category_id, payee, amount, date, cleared }).select().single();
+    if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
+    txnId = data.id;
+
+    if (document.getElementById('txn-detail-recurring').checked) {
+      const frequency = document.getElementById('txn-detail-recurring-freq').value;
+      const next_date = computeNextDate(date, frequency);
+      const { error: recErr } = await sb.from('recurring_transactions').insert({ account_id, category_id, payee, amount, frequency, next_date, active: true });
+      if (recErr) console.error(recErr);
+    }
+  }
+
+  for (const file of stagedReceiptFiles) {
+    const path = `receipt_${txnId}_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+    const { error: upErr } = await sb.storage.from('budget-bonnetjes').upload(path, file);
+    if (upErr) { console.error(upErr); continue; }
+    const { data: urlData } = sb.storage.from('budget-bonnetjes').getPublicUrl(path);
+    await sb.from('transaction_receipts').insert({ transaction_id: txnId, foto_url: urlData.publicUrl });
+  }
+
+  const aankoopVisible = document.getElementById('aankoop-fields').style.display !== 'none';
+  if (aankoopVisible) {
+    const naam = document.getElementById('aankoop-naam').value.trim();
+    const categorie = document.getElementById('aankoop-categorie').value;
+    if (naam) {
+      let possId = existingPossession ? existingPossession.id : null;
+      if (possId) {
+        await sb.from('possessions').update({ name: naam, category: categorie }).eq('id', possId);
+      } else {
+        const { data: newPoss, error: possErr } = await sb.from('possessions').insert({ transaction_id: txnId, name: naam, category: categorie }).select().single();
+        if (possErr) console.error(possErr);
+        else possId = newPoss.id;
+      }
+      if (possId) {
+        for (const file of stagedAankoopFiles) {
+          const path = `poss_${possId}_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+          const { error: upErr } = await sb.storage.from('budget-bezittingen').upload(path, file);
+          if (upErr) { console.error(upErr); continue; }
+          const { data: urlData } = sb.storage.from('budget-bezittingen').getPublicUrl(path);
+          await sb.from('possession_photos').insert({ possession_id: possId, foto_url: urlData.publicUrl });
+        }
+      }
+    }
+  }
+
   document.getElementById('txn-detail-bg').classList.remove('open');
   loadBudget();
   loadAccounts();
   loadTransactions();
   if (activeTab === 'zakelijk') loadZakelijk();
+  if (activeTab === 'possessions') loadPossessions();
 });
 
 document.getElementById('txn-detail-delete-btn').addEventListener('click', async () => {
+  if (!currentTxnId) return;
   if (!confirm('Deze transactie definitief verwijderen?')) return;
   const { error } = await sb.from('transactions').delete().eq('id', currentTxnId);
   if (error) { console.error(error); alert('Verwijderen mislukt.'); return; }
@@ -1012,35 +1132,8 @@ document.getElementById('txn-detail-delete-btn').addEventListener('click', async
 
 setupDatePicker('txn-detail-date');
 
-async function loadReceiptPhotos() {
-  const { data } = await sb.from('transaction_receipts').select('*').eq('transaction_id', currentTxnId);
-  const el = document.getElementById('receipt-photos');
-  el.innerHTML = (data || []).map(r => `<img src="${r.foto_url}">`).join('');
-}
-
-document.getElementById('receipt-add-btn').addEventListener('click', () => {
-  document.getElementById('receipt-file-input').click();
-});
-
-document.getElementById('receipt-file-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file || !currentTxnId) return;
-  const path = `receipt_${currentTxnId}_${Date.now()}.jpg`;
-  const { error: upErr } = await sb.storage.from('budget-bonnetjes').upload(path, file);
-  if (upErr) { console.error(upErr); alert('Upload mislukt.'); return; }
-  const { data: urlData } = sb.storage.from('budget-bonnetjes').getPublicUrl(path);
-  await sb.from('transaction_receipts').insert({ transaction_id: currentTxnId, foto_url: urlData.publicUrl });
-  loadReceiptPhotos();
-  e.target.value = '';
-});
-
 document.getElementById('txn-detail-close').addEventListener('click', () => {
   document.getElementById('txn-detail-bg').classList.remove('open');
-});
-
-document.getElementById('make-possession-btn').addEventListener('click', async () => {
-  document.getElementById('txn-detail-bg').classList.remove('open');
-  await openPossessionDetail(null, currentTxnId);
 });
 
 // ---- Possessions ----
@@ -1068,18 +1161,21 @@ let currentPossId = null;
 
 async function openPossessionDetail(possId, fromTxnId) {
   currentPossId = possId;
+  let linkedTxnId = fromTxnId || '';
   if (possId) {
     const { data } = await sb.from('possessions').select('*').eq('id', possId).single();
     document.getElementById('poss-name').value = data.name || '';
     document.getElementById('poss-category').value = data.category || 'overig';
     document.getElementById('poss-notitie').value = data.notitie || '';
+    linkedTxnId = data.transaction_id || '';
   } else {
     document.getElementById('poss-name').value = '';
     document.getElementById('poss-category').value = 'overig';
     document.getElementById('poss-notitie').value = '';
     document.getElementById('poss-photos').innerHTML = '';
   }
-  document.getElementById('poss-detail-bg').dataset.fromTxn = fromTxnId || '';
+  document.getElementById('poss-detail-bg').dataset.fromTxn = linkedTxnId;
+  document.getElementById('poss-goto-txn-btn').style.display = linkedTxnId ? 'block' : 'none';
   await loadPossessionPhotos();
   document.getElementById('poss-detail-bg').classList.add('open');
 }
@@ -1105,6 +1201,13 @@ document.getElementById('poss-file-input').addEventListener('change', async (e) 
   await sb.from('possession_photos').insert({ possession_id: currentPossId, foto_url: urlData.publicUrl });
   loadPossessionPhotos();
   e.target.value = '';
+});
+
+document.getElementById('poss-goto-txn-btn').addEventListener('click', () => {
+  const txnId = document.getElementById('poss-detail-bg').dataset.fromTxn;
+  if (!txnId) return;
+  document.getElementById('poss-detail-bg').classList.remove('open');
+  openTxnDetail(Number(txnId));
 });
 
 document.getElementById('poss-cancel').addEventListener('click', () => {
