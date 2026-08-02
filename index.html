@@ -353,28 +353,32 @@
       </select>
     </div>
 
-    <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
-      <label>Bonnetje</label>
-      <div class="photo-row" id="receipt-photos"></div>
-      <input type="file" id="receipt-file-input" accept="image/*" style="display:none">
-      <button class="photo-add-btn" id="receipt-add-btn" style="width:auto; padding:6px 12px; margin-top:6px;">+ Bonnetje toevoegen</button>
-    </div>
-
-    <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
-      <label>Aankoop (optioneel)</label>
-      <div id="aankoop-fields" style="display:none;">
-        <input type="text" id="aankoop-naam" placeholder="Naam van de aankoop">
-        <select id="aankoop-categorie">
-          <option value="kleding">Kleding</option>
-          <option value="meubilair">Meubilair</option>
-          <option value="apparaten">Apparaten</option>
-          <option value="overig">Overig</option>
-        </select>
-        <div class="photo-row" id="aankoop-photos"></div>
-        <input type="file" id="aankoop-file-input" accept="image/*" style="display:none">
-        <button class="photo-add-btn" id="aankoop-add-photo-btn" style="width:auto; padding:6px 12px; margin-top:6px;">+ Aankoopfoto toevoegen</button>
+    <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px; display:flex; gap:12px;">
+      <div style="flex:1; min-width:0;">
+        <label>Bonnetje</label>
+        <div class="photo-row" id="receipt-photos"></div>
+        <input type="file" id="receipt-file-input" accept="image/*" style="display:none">
+        <button class="photo-add-btn" id="receipt-add-btn" style="width:auto; padding:6px 10px; margin-top:6px; font-size:12px;">+ Bonnetje</button>
       </div>
-      <button class="btn-save" id="aankoop-start-btn" style="width:100%;">+ Dit is (ook) een aankoop</button>
+      <div style="flex:1; min-width:0;">
+        <label>Aankoop <span style="font-weight:normal; color:#888;">(optioneel)</span></label>
+        <div id="aankoop-fields" style="display:none;">
+          <input type="text" id="aankoop-naam" placeholder="Naam">
+          <select id="aankoop-categorie">
+            <option value="kleding">Kleding</option>
+            <option value="meubilair">Meubilair</option>
+            <option value="apparaten">Apparaten</option>
+            <option value="overig">Overig</option>
+          </select>
+          <div class="photo-row" id="aankoop-photos"></div>
+          <button class="photo-add-btn" id="aankoop-add-photo-btn" style="width:auto; padding:6px 10px; margin-top:6px; font-size:12px;">+ Foto</button>
+          <input type="file" id="aankoop-file-input" accept="image/*" style="display:none">
+          <div style="text-align:right; margin-top:6px;">
+            <button type="button" id="aankoop-remove-btn" style="border:none; background:none; color:var(--red); font-size:11px; cursor:pointer; text-decoration:underline; padding:0;">Aankoop verwijderen</button>
+          </div>
+        </div>
+        <button class="btn-save" id="aankoop-start-btn" style="width:100%;">+ Dit is (ook) een aankoop</button>
+      </div>
     </div>
 
     <div class="actions">
@@ -438,7 +442,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v2.6';
+const APP_VERSION = 'v2.7';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Tab switching ----
@@ -1058,6 +1062,21 @@ document.getElementById('txn-detail-recurring').addEventListener('change', funct
 document.getElementById('aankoop-start-btn').addEventListener('click', () => {
   document.getElementById('aankoop-fields').style.display = 'block';
   document.getElementById('aankoop-start-btn').style.display = 'none';
+});
+
+document.getElementById('aankoop-remove-btn').addEventListener('click', async () => {
+  if (!confirm('Deze aankoop (inclusief foto\'s) verwijderen?')) return;
+  if (existingPossession) {
+    const { error } = await sb.from('possessions').delete().eq('id', existingPossession.id);
+    if (error) { console.error(error); alert('Verwijderen mislukt.'); return; }
+    existingPossession = null;
+  }
+  stagedAankoopFiles = [];
+  document.getElementById('aankoop-naam').value = '';
+  document.getElementById('aankoop-categorie').value = 'overig';
+  document.getElementById('aankoop-fields').style.display = 'none';
+  document.getElementById('aankoop-start-btn').style.display = 'block';
+  renderAankoopPhotoPreview();
 });
 
 document.getElementById('receipt-add-btn').addEventListener('click', () => {
