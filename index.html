@@ -73,7 +73,7 @@
   .date-group-heading { font-size:12px; font-weight:bold; color:#555; margin:10px 0 4px 2px; }
   .date-group-heading:first-child { margin-top:0; }
   .txn-cleared-cb { margin-right:8px; width:18px; height:18px; flex-shrink:0; }
-  .txn-cleared-mark { cursor:pointer; font-size:14px; color:#ccc; user-select:none; padding:2px; }
+  .txn-cleared-mark { cursor:pointer; font-size:16px; font-weight:bold; color:#aaa; user-select:none; padding:2px 6px; }
   .txn-cleared-mark.is-cleared { color:var(--green); }
   .txn-select-cb { margin-right:8px; width:18px; height:18px; flex-shrink:0; }
   .bulk-toolbar { background:#fffde7; border:1px solid #ffe082; border-radius:8px; padding:8px; margin-bottom:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:12px; }
@@ -155,6 +155,7 @@
         <button class="select-toggle-btn" id="main-select-toggle">Selecteren</button>
         <button class="select-toggle-btn" id="account-filter-toggle">Filter op rekening</button>
         <button class="select-toggle-btn" id="main-sort-toggle" title="Sorteervolgorde omdraaien">↓ Oudste eerst</button>
+        <button class="select-toggle-btn" id="recurring-overview-btn">Toekomstige transacties</button>
       </div>
       <div style="margin-bottom:6px;">
         <input type="text" id="main-txn-search" placeholder="Zoek op payee of omschrijving..." style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px;">
@@ -373,6 +374,17 @@
   </div>
 </div>
 
+<div class="modal-bg" id="recurring-overview-modal-bg">
+  <div class="modal" style="max-height:80vh; overflow-y:auto;">
+    <h3 style="margin-top:0;">Toekomstige transacties</h3>
+    <p style="font-size:12px; color:#888; margin-top:-8px;">Eerstvolgende occurrence van elke actieve herhalende transactie.</p>
+    <div id="recurring-overview-list"></div>
+    <div class="actions">
+      <button class="btn-cancel" id="recurring-overview-close">Sluiten</button>
+    </div>
+  </div>
+</div>
+
 <div class="lightbox-bg" id="lightbox-bg">
   <button type="button" class="lightbox-close" id="lightbox-close">&times;</button>
   <img id="lightbox-img" src="" alt="">
@@ -522,7 +534,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.6';
+const APP_VERSION = 'v3.7';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -866,7 +878,7 @@ function renderOneTxnRow(t, opts, bulkOn) {
           <div style="color:${t.amount < 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${formatEuro(t.amount)}</div>
           ${t.balanceAfter !== undefined ? `<div style="font-size:11px; color:#888;">saldo: ${formatEuro(t.balanceAfter)}</div>` : ''}
         </div>
-        <span class="txn-cleared-mark ${t.cleared ? 'is-cleared' : ''}" data-txn="${t.id}" title="Cleared">✓</span>
+        <span class="txn-cleared-mark ${t.cleared ? 'is-cleared' : ''}" data-txn="${t.id}" title="${t.cleared ? 'Cleared — klik om te ontclearen' : 'Niet gecleared — klik om te clearen'}">${t.cleared ? '✓' : '–'}</span>
       </div>
     </div>`;
 }
@@ -877,6 +889,8 @@ function wireTransactionRowEvents(container, context) {
       e.stopPropagation();
       const newState = !mark.classList.contains('is-cleared');
       mark.classList.toggle('is-cleared', newState);
+      mark.textContent = newState ? '✓' : '–';
+      mark.title = newState ? 'Cleared — klik om te ontclearen' : 'Niet gecleared — klik om te clearen';
       const { error } = await sb.from('transactions').update({ cleared: newState }).eq('id', mark.dataset.txn);
       if (error) console.error(error);
     });
@@ -1225,6 +1239,66 @@ async function buildLeafCategoryOptions(scope) {
   walk('root', []);
   return orderedLeaves;
 }
+
+async function openRecurringOverview() {
+  const { data: recurringRows, error } = await sb.from('recurring_transactions').select('*').eq('active', true).order('next_date');
+  if (error) { console.error(error); alert('Kon herhalende transacties niet laden.'); return; }
+  const { data: accountsData } = await sb.from('accounts').select('id, name, scope');
+  const accountMap = {};
+  (accountsData || []).forEach(a => accountMap[a.id] = a);
+  const { data: categoriesData } = await sb.from('categories').select('id, name');
+  const catMap = {};
+  (categoriesData || []).forEach(c => catMap[c.id] = c);
+
+  const leafOptionsByScope = {
+    prive: await buildLeafCategoryOptions('prive'),
+    zakelijk: await buildLeafCategoryOptions('zakelijk'),
+  };
+
+  const el = document.getElementById('recurring-overview-list');
+  if (!recurringRows || recurringRows.length === 0) {
+    el.innerHTML = '<div class="empty">Geen actieve herhalende transacties.</div>';
+  } else {
+    el.innerHTML = recurringRows.map(r => {
+      const acc = accountMap[r.account_id];
+      const scope = acc?.scope || 'prive';
+      const options = leafOptionsByScope[scope] || [];
+      const catMissing = r.category_id && !catMap[r.category_id];
+      const optionsHtml = ['<option value="">(geen categorie)</option>'].concat(
+        options.map(o => `<option value="${o.id}" ${o.id === r.category_id ? 'selected' : ''}>${o.label}</option>`)
+      ).join('');
+      return `
+        <div class="recurring-overview-row" data-recurring-id="${r.id}" style="border-bottom:1px solid var(--border); padding:10px 0;">
+          <div style="display:flex; justify-content:space-between;">
+            <strong>${r.payee || '(geen payee)'}</strong>
+            <span style="color:${r.amount < 0 ? 'var(--red)' : 'var(--green)'};">${formatEuro(Number(r.amount))}</span>
+          </div>
+          <div style="font-size:12px; color:#888;">${acc?.name || '(rekening onbekend)'} · eerstvolgende: ${formatDateNL(r.next_date)}</div>
+          <div style="margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            ${catMissing ? '<span class="recurring-cat-warning" style="color:var(--red); font-weight:bold; font-size:12px;">⚠ Categorie verwijderd</span>' : ''}
+            <select class="recurring-cat-select" style="flex:1; min-width:160px;">${optionsHtml}</select>
+          </div>
+        </div>
+      `;
+    }).join('');
+    el.querySelectorAll('.recurring-cat-select').forEach(sel => {
+      sel.addEventListener('change', async (e) => {
+        const row = e.target.closest('.recurring-overview-row');
+        const id = row.dataset.recurringId;
+        const newCatId = e.target.value || null;
+        const { error: updErr } = await sb.from('recurring_transactions').update({ category_id: newCatId }).eq('id', id);
+        if (updErr) { console.error(updErr); alert('Opslaan mislukt.'); return; }
+        const warnEl = row.querySelector('.recurring-cat-warning');
+        if (warnEl) warnEl.remove();
+      });
+    });
+  }
+  document.getElementById('recurring-overview-modal-bg').classList.add('open');
+}
+document.getElementById('recurring-overview-btn').addEventListener('click', openRecurringOverview);
+document.getElementById('recurring-overview-close').addEventListener('click', () => {
+  document.getElementById('recurring-overview-modal-bg').classList.remove('open');
+});
 
 function computeNextDate(dateStr, frequency) {
   const d = new Date(dateStr + 'T00:00:00');
