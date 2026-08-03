@@ -34,13 +34,13 @@
   .group h3 { margin:0 0 6px 4px; font-size:13px; text-transform:uppercase; color:#777; }
   .cat-row, .acc-row, .txn-row { background:var(--card); border-radius:6px; padding:10px 12px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }
   .cat-row { flex-direction:column; align-items:stretch; gap:4px; }
-  .cat-row .top-line { display:flex; justify-content:space-between; align-items:center; }
-  .cat-row .name { flex:1; }
-  .cat-row .avail { font-weight:bold; min-width:70px; text-align:right; }
+  .cat-row .top-line { display:flex; justify-content:flex-end; align-items:center; gap:4px; }
+  .cat-row .name { font-weight:600; overflow-wrap:break-word; }
+  .cat-row .avail { font-weight:bold; min-width:64px; text-align:right; margin-left:auto; }
   .cat-row .avail.positive { color:var(--green); }
   .cat-row .avail.negative { color:var(--red); }
   .cat-row .expected { font-size:11px; color:#888; text-align:right; }
-  .cat-row input.assign { width:70px; text-align:right; border:1px solid var(--border); border-radius:4px; padding:4px; }
+  .cat-row input.assign { width:64px; min-width:0; text-align:right; border:1px solid var(--border); border-radius:4px; padding:4px; }
   .fab { position:fixed; bottom:20px; right:20px; background:var(--green); color:#fff; border:none; border-radius:50%; width:52px; height:52px; font-size:26px; box-shadow:0 2px 6px rgba(0,0,0,.3); }
   .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); align-items:center; justify-content:center; z-index:40; }
   .modal-bg.open { display:flex; }
@@ -568,7 +568,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.8';
+const APP_VERSION = 'v3.10';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -652,7 +652,7 @@ function setupDatePicker(hiddenId) {
       popup.style.display = 'none';
     }));
     popup.querySelector('.dp-today').addEventListener('click', () => {
-      setDateValue(hiddenId, new Date().toISOString().slice(0, 10));
+      setDateValue(hiddenId, toLocalISODate(new Date()));
       popup.style.display = 'none';
     });
   }
@@ -765,7 +765,7 @@ async function loadDashboard() {
   ageEl.innerHTML = months.map(m => {
     const nextMonth = new Date(m + '-01T00:00:00');
     nextMonth.setMonth(nextMonth.getMonth() + 1);
-    const cutoff = nextMonth.toISOString().slice(0, 10);
+    const cutoff = toLocalISODate(nextMonth);
     const age = computeAgeUpTo(cutoff);
     return `<div class="acc-row"><div>${m}</div><div>${age === null ? '–' : age + ' dagen'}</div></div>`;
   }).join('');
@@ -795,6 +795,18 @@ const collapsedCatIds = new Set();
 const transactionAccountFilter = new Set();
 let mainTxnSearch = '';
 let mainSortDesc = false;
+const assignSaveTimers = {};
+function scheduleAssignSave(catId, value) {
+  if (assignSaveTimers[catId]) clearTimeout(assignSaveTimers[catId]);
+  assignSaveTimers[catId] = setTimeout(async () => {
+    delete assignSaveTimers[catId];
+    const { monthStr: m } = monthBounds();
+    const { error } = await sb.from('budget_months')
+      .upsert({ category_id: catId, month: m, assigned: value }, { onConflict: 'category_id,month' });
+    if (error) { console.error(error); alert('Opslaan van toewijzing mislukt.'); }
+    loadBudget();
+  }, 500);
+}
 const zakAccountFilter = new Set();
 
 async function openAccountFilterPanel() {
@@ -1016,7 +1028,7 @@ function bulkMoveDate(context, reload) {
   const ids = [...selectedTxnState[context]];
   if (ids.length === 0) return;
   bulkMoveDateState = { context, reload, ids };
-  setDateValue('bulk-date-hidden', new Date().toISOString().slice(0, 10));
+  setDateValue('bulk-date-hidden', toLocalISODate(new Date()));
   document.getElementById('bulk-date-modal-bg').classList.add('open');
 }
 
@@ -1041,7 +1053,7 @@ function monthBounds() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  return { monthStr: start.toISOString().slice(0,10), startStr: start.toISOString().slice(0,10), endStr: end.toISOString().slice(0,10) };
+  return { monthStr: toLocalISODate(start), startStr: toLocalISODate(start), endStr: toLocalISODate(end) };
 }
 
 async function updateMoneyAge() {
@@ -1052,7 +1064,7 @@ async function updateMoneyAge() {
     .eq('accounts.scope', 'prive')
     .order('date', { ascending: true })
     .order('id', { ascending: true });
-  const earliestDate = (priveTxnsForAge && priveTxnsForAge.length > 0) ? priveTxnsForAge[0].date : new Date().toISOString().slice(0, 10);
+  const earliestDate = (priveTxnsForAge && priveTxnsForAge.length > 0) ? priveTxnsForAge[0].date : toLocalISODate(new Date());
   const ageEntries = [];
   (priveAccountsForAge || []).forEach(a => { if (Number(a.starting_balance) > 0) ageEntries.push({ date: earliestDate, amount: Number(a.starting_balance) }); });
   (priveTxnsForAge || []).forEach(t => ageEntries.push({ date: t.date, amount: Number(t.amount) }));
@@ -1211,8 +1223,8 @@ async function loadBudget() {
     const expected = type === 'income' ? (available - (expectedMap[c.id] || 0)) : (available + (expectedMap[c.id] || 0));
     return `
       <div class="cat-row">
+        <div class="name">${c.name}</div>
         <div class="top-line">
-          <div class="name">${c.name}</div>
           <button type="button" class="stepper-btn assign-minus" data-cat="${c.id}" style="width:32px; height:30px; font-size:12px; padding:0;">−</button>
           <input class="assign" data-cat="${c.id}" type="number" step="50" value="${assigned.toFixed(2)}">
           <button type="button" class="stepper-btn assign-plus" data-cat="${c.id}" style="width:32px; height:30px; font-size:12px; padding:0;">+</button>
@@ -1233,14 +1245,14 @@ async function loadBudget() {
       btn.addEventListener('click', () => {
         const inp = container.querySelector(`.assign[data-cat="${btn.dataset.cat}"]`);
         inp.value = (parseFloat(inp.value) - 50).toFixed(2);
-        inp.dispatchEvent(new Event('change'));
+        scheduleAssignSave(btn.dataset.cat, parseFloat(inp.value));
       });
     });
     container.querySelectorAll('.assign-plus').forEach(btn => {
       btn.addEventListener('click', () => {
         const inp = container.querySelector(`.assign[data-cat="${btn.dataset.cat}"]`);
         inp.value = (parseFloat(inp.value) + 50).toFixed(2);
-        inp.dispatchEvent(new Event('change'));
+        scheduleAssignSave(btn.dataset.cat, parseFloat(inp.value));
       });
     });
     container.querySelectorAll('input.assign').forEach(inp => {
@@ -1254,14 +1266,10 @@ async function loadBudget() {
       });
     });
     container.querySelectorAll('input.assign').forEach(inp => {
-      inp.addEventListener('change', async () => {
+      inp.addEventListener('change', () => {
         const catId = inp.dataset.cat;
         const value = parseFloat(inp.value) || 0;
-        const { monthStr: m } = monthBounds();
-        const { error } = await sb.from('budget_months')
-          .upsert({ category_id: catId, month: m, assigned: value }, { onConflict: 'category_id,month' });
-        if (error) { console.error(error); alert('Opslaan van toewijzing mislukt.'); }
-        loadBudget();
+        scheduleAssignSave(catId, value);
       });
     });
   });
@@ -1353,6 +1361,13 @@ document.getElementById('recurring-overview-close').addEventListener('click', ()
   document.getElementById('recurring-overview-modal-bg').classList.remove('open');
 });
 
+function toLocalISODate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function computeNextDate(dateStr, frequency) {
   const d = new Date(dateStr + 'T00:00:00');
   switch (frequency) {
@@ -1364,7 +1379,7 @@ function computeNextDate(dateStr, frequency) {
     case '3monthly': d.setMonth(d.getMonth() + 3); break;
     case 'yearly': d.setFullYear(d.getFullYear() + 1); break;
   }
-  return d.toISOString().slice(0, 10);
+  return toLocalISODate(d);
 }
 
 document.getElementById('add-txn-btn').addEventListener('click', () => openTxnDetail(null));
@@ -1607,7 +1622,7 @@ async function openTxnDetail(txnId) {
     document.getElementById('txn-detail-payee').value = '';
     document.getElementById('txn-detail-amount').value = '';
     setAmountType('txn-detail', 'expense');
-    setDateValue('txn-detail-date', new Date().toISOString().slice(0, 10));
+    setDateValue('txn-detail-date', toLocalISODate(new Date()));
     document.getElementById('txn-detail-cleared').checked = true;
     document.getElementById('txn-detail-notitie').value = '';
   }
@@ -1917,8 +1932,8 @@ async function loadAccountDetailTransactions(accountId, startingBalance) {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth() + acctDetailMonthOffset, 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + acctDetailMonthOffset + 1, 1);
-  const monthStartStr = monthStart.toISOString().slice(0, 10);
-  const monthEndStr = monthEnd.toISOString().slice(0, 10);
+  const monthStartStr = toLocalISODate(monthStart);
+  const monthEndStr = toLocalISODate(monthEnd);
 
   // Saldo aan het BEGIN van de getoonde maand: startsaldo + alles ervoor
   const { data: priorTxns } = await sb.from('transactions').select('amount').eq('account_id', accountId).lt('date', monthStartStr);
@@ -2015,7 +2030,7 @@ async function openTransferModal() {
   document.getElementById('transfer-from').innerHTML = opts;
   document.getElementById('transfer-to').innerHTML = opts;
   document.getElementById('transfer-amount').value = '';
-  setDateValue('transfer-date', new Date().toISOString().slice(0, 10));
+  setDateValue('transfer-date', toLocalISODate(new Date()));
   updateTransferScopeNote();
   document.getElementById('transfer-modal-bg').classList.add('open');
 }
@@ -2102,7 +2117,7 @@ document.getElementById('account-save').addEventListener('click', async () => {
 async function generateDueRecurringTransactions() {
   const today = new Date();
   const lookahead = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7);
-  const lookaheadStr = lookahead.toISOString().slice(0, 10);
+  const lookaheadStr = toLocalISODate(lookahead);
   const { data: due } = await sb.from('recurring_transactions').select('*').eq('active', true).lte('next_date', lookaheadStr);
   if (!due || due.length === 0) return;
   for (const r of due) {
@@ -2464,7 +2479,7 @@ async function openZakTxnModal() {
   loadPayeeSuggestions();
   document.getElementById('zak-txn-amount').value = '';
   setAmountType('zak-txn', 'expense');
-  setDateValue('zak-txn-date', new Date().toISOString().slice(0,10));
+  setDateValue('zak-txn-date', toLocalISODate(new Date()));
   if (!accounts || accounts.length === 0) {
     alert('Nog geen zakelijke rekening. Voeg er eerst één toe via Supabase (accounts-tabel, type = \'zakelijk\').');
     return;
