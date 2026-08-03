@@ -14,7 +14,7 @@
   input[type=number]::-webkit-inner-spin-button,
   input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
   input[type=number] { -moz-appearance:textfield; }
-  body { font-family: -apple-system, Helvetica, Arial, sans-serif; margin:0; background:var(--bg); color:#222; overflow-x:hidden; }
+  body { font-family: -apple-system, Helvetica, Arial, sans-serif; margin:0; background:var(--bg); color:#222; }
   html { overflow-x:hidden; }
   header { background:#1b5e20; color:#fff; padding:10px 16px; }
   header .header-top { display:flex; justify-content:space-between; align-items:center; }
@@ -154,6 +154,10 @@
       <div style="text-align:left; margin-bottom:6px; display:flex; gap:8px; align-items:center;">
         <button class="select-toggle-btn" id="main-select-toggle">Selecteren</button>
         <button class="select-toggle-btn" id="account-filter-toggle">Filter op rekening</button>
+        <button class="select-toggle-btn" id="main-sort-toggle" title="Sorteervolgorde omdraaien">↓ Oudste eerst</button>
+      </div>
+      <div style="margin-bottom:6px;">
+        <input type="text" id="main-txn-search" placeholder="Zoek op payee of omschrijving..." style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px;">
       </div>
     </div>
     <div id="account-filter-panel" style="display:none; background:var(--card); border-radius:8px; padding:10px; margin-bottom:8px;">
@@ -518,7 +522,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.5';
+const APP_VERSION = 'v3.6';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -743,6 +747,8 @@ const selectedTxnState = { main: new Set(), acct: new Set(), zak: new Set() };
 const txnAmountState = { main: {}, acct: {}, zak: {} };
 const collapsedCatIds = new Set();
 const transactionAccountFilter = new Set();
+let mainTxnSearch = '';
+let mainSortDesc = false;
 const zakAccountFilter = new Set();
 
 async function openAccountFilterPanel() {
@@ -1257,16 +1263,23 @@ async function loadTransactions() {
 
   let query = sb
     .from('transactions')
-    .select('id, date, payee, amount, cleared, account_id, link_type, categories(name)')
+    .select('id, date, payee, notitie, amount, cleared, account_id, link_type, categories(name)')
     .order('date', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(50);
+    .order('id', { ascending: false });
   if (transactionAccountFilter.size > 0) query = query.in('account_id', [...transactionAccountFilter]);
+  const searchTerm = mainTxnSearch.trim();
+  if (searchTerm) {
+    const escaped = searchTerm.replace(/[%,]/g, '');
+    query = query.or(`payee.ilike.%${escaped}%,notitie.ilike.%${escaped}%`);
+  } else {
+    query = query.limit(50);
+  }
   const { data, error: dErr } = await query;
   if (dErr) { console.error(dErr); return; }
   const el = document.getElementById('transactions-list');
   if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Geen transacties gevonden.</div>'; return; }
-  const chronological = [...data].reverse(); // register-stijl: oud boven, nieuw onder
+  let chronological = [...data].reverse(); // register-stijl: oud boven, nieuw onder
+  if (mainSortDesc) chronological = chronological.reverse();
   const rowsChrono = chronological.map(t => ({
     id: t.id, date: t.date, payee: t.payee, amount: Number(t.amount), cleared: t.cleared,
     categoryName: t.categories?.name, link_type: t.link_type,
@@ -1277,6 +1290,16 @@ async function loadTransactions() {
   el.innerHTML = renderTransactionRows(rows, { showAccount: true, context: 'main' });
   wireTransactionRowEvents(el, 'main');
 }
+
+document.getElementById('main-txn-search').addEventListener('input', (e) => {
+  mainTxnSearch = e.target.value;
+  loadTransactions();
+});
+document.getElementById('main-sort-toggle').addEventListener('click', () => {
+  mainSortDesc = !mainSortDesc;
+  document.getElementById('main-sort-toggle').textContent = mainSortDesc ? '↑ Nieuwste eerst' : '↓ Oudste eerst';
+  loadTransactions();
+});
 
 document.getElementById('main-select-toggle').addEventListener('click', () => toggleBulkMode('main', loadTransactions));
 document.getElementById('main-bulk-offset').addEventListener('click', () => bulkOffset('main', loadTransactions));
