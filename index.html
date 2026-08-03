@@ -81,6 +81,15 @@
   .bulk-toolbar button.danger { background:var(--red); }
   .bulk-toolbar button.neutral { background:#888; }
   .bulk-sum { font-weight:bold; }
+  .income-expense-columns { display:flex; gap:16px; align-items:flex-start; }
+  .income-expense-columns .ie-column { flex:1; min-width:0; }
+  .ie-column-heading { font-size:13px; text-transform:uppercase; letter-spacing:.5px; margin:0 0 8px 0; padding-bottom:6px; border-bottom:2px solid var(--border); }
+  .ie-column-heading.expense-heading { color:var(--red); border-color:var(--red); }
+  .ie-column-heading.income-heading { color:var(--green); border-color:var(--green); }
+  @media (max-width:600px) {
+    .income-expense-columns { flex-direction:column; }
+    .income-expense-columns .ie-column { width:100%; margin-bottom:14px; }
+  }
   .select-toggle-btn { font-size:12px; color:var(--green); background:none; border:1px solid var(--green); border-radius:6px; padding:4px 10px; cursor:pointer; }
   .amount-type-toggle { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-top:2px; }
   .amount-type-toggle button { flex:1; padding:8px; border:none; background:#fff; font-size:14px; cursor:pointer; }
@@ -137,7 +146,16 @@
       <div class="amount" id="rta-amount">€ 0,00</div>
       <div style="font-size:11px; color:#888; margin-top:6px;">Totaal saldo (privé + zakelijk): <span id="combined-total">€ 0,00</span></div>
     </div>
-    <div id="budget-groups"><div class="empty">Nog geen categorieën. Voeg er een toe via Supabase of bouw straks de "+"-knop uit.</div></div>
+    <div class="income-expense-columns">
+      <div class="ie-column">
+        <h3 class="ie-column-heading expense-heading">Uitgaven</h3>
+        <div id="budget-groups-expense"><div class="empty">Nog geen categorieën.</div></div>
+      </div>
+      <div class="ie-column">
+        <h3 class="ie-column-heading income-heading">Inkomsten</h3>
+        <div id="budget-groups-income"><div class="empty">Nog geen categorieën.</div></div>
+      </div>
+    </div>
   </div>
 
   <div id="tab-accounts" style="display:none">
@@ -184,7 +202,16 @@
 
   <div id="tab-categories" style="display:none">
     <button class="btn-save" id="add-root-cat-btn" style="width:100%; padding:10px; margin-bottom:10px;">+ Nieuwe hoofdcategorie</button>
-    <div id="categories-tree"><div class="empty">Nog geen categorieën.</div></div>
+    <div class="income-expense-columns">
+      <div class="ie-column">
+        <h3 class="ie-column-heading expense-heading">Uitgaven</h3>
+        <div id="categories-tree-expense"><div class="empty">Nog geen categorieën.</div></div>
+      </div>
+      <div class="ie-column">
+        <h3 class="ie-column-heading income-heading">Inkomsten</h3>
+        <div id="categories-tree-income"><div class="empty">Nog geen categorieën.</div></div>
+      </div>
+    </div>
     <div id="drag-indicator" style="display:none; position:fixed; z-index:50; background:#1b5e20; color:#fff; padding:5px 10px; border-radius:6px; font-size:12px; pointer-events:none; white-space:nowrap;"></div>
   </div>
 
@@ -520,6 +547,13 @@
     <input type="text" id="cat-name">
     <label>Hoofdcategorie (parent)</label>
     <select id="cat-parent"><option value="">— Geen (dit is een hoofdcategorie) —</option></select>
+    <div id="cat-type-row">
+      <label>Type</label>
+      <select id="cat-type">
+        <option value="expense">Uitgaven</option>
+        <option value="income">Inkomsten</option>
+      </select>
+    </div>
     <div class="actions">
       <button class="btn-cancel" id="cat-cancel">Annuleren</button>
       <button class="btn-save" id="cat-save">Opslaan</button>
@@ -534,7 +568,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.7';
+const APP_VERSION = 'v3.8';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -871,7 +905,7 @@ function renderOneTxnRow(t, opts, bulkOn) {
       ${bankLogo}
       <div style="flex:1; min-width:0;">
         <div style="overflow-wrap:break-word;">${linkIcon}${t.payee || '(geen payee)'}</div>
-        <div style="font-size:11px; color:#888; overflow-wrap:break-word;">${opts.showAccount ? (t.accountName || '') + ' · ' : ''}${t.categoryName || 'Ready to Assign'}</div>
+        <div style="font-size:11px; color:#888; overflow-wrap:break-word;">${opts.showAccount ? (t.accountName || '') + ' · ' : ''}${t.categoryName || (t.link_type === 'transfer' ? '' : 'Ready to Assign')}</div>
       </div>
       <div style="text-align:right; flex-shrink:0; display:flex; align-items:center; gap:6px;">
         <div>
@@ -1071,10 +1105,19 @@ async function loadBudget() {
 
   const { data: cats, error: cErr } = await sb
     .from('categories')
-    .select('id, parent_id, name, sort_order')
+    .select('id, parent_id, name, sort_order, type')
     .eq('scope', 'prive')
     .order('sort_order');
   if (cErr) { console.error(cErr); return; }
+
+  const catsById = {};
+  (cats || []).forEach(c => catsById[c.id] = c);
+  function rootTypeOf(catId) {
+    let node = catsById[catId];
+    const seen = new Set();
+    while (node && node.parent_id && !seen.has(node.id)) { seen.add(node.id); node = catsById[node.parent_id]; }
+    return (node && node.type === 'income') ? 'income' : 'expense';
+  }
 
   const { data: budgetRows } = await sb
     .from('budget_months')
@@ -1088,7 +1131,6 @@ async function loadBudget() {
     .select('category_id, amount')
     .gte('date', startStr).lt('date', endStr);
   const spentMap = {};
-  let unassignedAllTimeIncoming = 0;
   (spentRows || []).forEach(r => { if (r.category_id) spentMap[r.category_id] = (spentMap[r.category_id] || 0) + Number(r.amount); });
 
   const { data: recurringRows } = await sb
@@ -1099,13 +1141,17 @@ async function loadBudget() {
   const expectedMap = {};
   (recurringRows || []).forEach(r => { if (r.category_id) expectedMap[r.category_id] = (expectedMap[r.category_id] || 0) + Number(r.amount); });
 
-  // Ready to Assign: startsaldi + alle ooit binnengekomen ongecategoriseerde privé-transacties min alles wat ooit is toegewezen
+  // Ready to Assign: startsaldi + alle ooit binnengekomen ongecategoriseerde privé-transacties min alles wat ooit aan
+  // UITGAVEN-categorieën is toegewezen. Toewijzingen aan inkomsten-categorieën tellen hier niet mee: dat is een
+  // verwacht bedrag (forward-looking target), geen echte oormerking van al beschikbaar geld.
   const { data: priveAccountsForRta } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
   const totalStartingBalance = (priveAccountsForRta || []).reduce((s, a) => s + Number(a.starting_balance), 0);
   const { data: unassignedTxns } = await sb.from('transactions').select('amount, accounts!inner(scope)').is('category_id', null).eq('accounts.scope', 'prive');
   const totalUnassigned = (unassignedTxns || []).reduce((s, r) => s + Number(r.amount), 0);
-  const { data: allBudgetRows } = await sb.from('budget_months').select('assigned');
-  const totalAssignedEver = (allBudgetRows || []).reduce((s, r) => s + Number(r.assigned), 0);
+  const { data: allBudgetRows } = await sb.from('budget_months').select('category_id, assigned');
+  const totalAssignedEver = (allBudgetRows || [])
+    .filter(r => rootTypeOf(r.category_id) !== 'income')
+    .reduce((s, r) => s + Number(r.assigned), 0);
   const rta = totalStartingBalance + totalUnassigned - totalAssignedEver;
   const rtaEl = document.getElementById('rta-amount');
   rtaEl.textContent = formatEuro(rta);
@@ -1119,9 +1165,11 @@ async function loadBudget() {
 
   await updateMoneyAge();
 
-  const container = document.getElementById('budget-groups');
+  const containerExpense = document.getElementById('budget-groups-expense');
+  const containerIncome = document.getElementById('budget-groups-income');
   if (!cats || cats.length === 0) {
-    container.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
+    containerExpense.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
+    containerIncome.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
     return;
   }
 
@@ -1129,38 +1177,38 @@ async function loadBudget() {
   cats.forEach(c => { const k = c.parent_id || 'root'; (byParent[k] = byParent[k] || []).push(c); });
   Object.values(byParent).forEach(arr => arr.sort((a,b) => a.sort_order - b.sort_order));
 
-  function computeSums(nodeId) {
+  function computeSums(nodeId, type) {
     const children = byParent[nodeId] || [];
     if (children.length === 0) {
       const assigned = assignedMap[nodeId] || 0;
       const spent = spentMap[nodeId] || 0;
-      const available = assigned + spent;
-      const expected = available + (expectedMap[nodeId] || 0);
+      const available = type === 'income' ? (assigned - spent) : (assigned + spent);
+      const expected = type === 'income' ? (available - (expectedMap[nodeId] || 0)) : (available + (expectedMap[nodeId] || 0));
       return { assigned, available, expected };
     }
     return children.reduce((acc, ch) => {
-      const s = computeSums(ch.id);
+      const s = computeSums(ch.id, type);
       return { assigned: acc.assigned + s.assigned, available: acc.available + s.available, expected: acc.expected + s.expected };
     }, { assigned: 0, available: 0, expected: 0 });
   }
 
-  function renderNode(c) {
+  function renderNode(c, type) {
     const children = byParent[c.id];
     if (children && children.length > 0) {
       const isCollapsed = collapsedCatIds.has(c.id);
-      const sums = computeSums(c.id);
+      const sums = computeSums(c.id, type);
       const header = `
         <h3 style="cursor:pointer;" data-budget-toggle="${c.id}">
           <span>${isCollapsed ? '▸' : '▾'} ${c.name}</span>
           ${isCollapsed ? `<span class="avail ${sums.available >= 0 ? 'positive' : 'negative'}" style="text-transform:none; font-size:13px;">${formatEuro(sums.available)}</span>` : ''}
         </h3>`;
-      const body = isCollapsed ? '' : children.map(renderNode).join('');
+      const body = isCollapsed ? '' : children.map(ch => renderNode(ch, type)).join('');
       return `<div class="group">${header}${body}</div>`;
     }
     const assigned = assignedMap[c.id] || 0;
     const spent = spentMap[c.id] || 0;
-    const available = assigned + spent;
-    const expected = available + (expectedMap[c.id] || 0);
+    const available = type === 'income' ? (assigned - spent) : (assigned + spent);
+    const expected = type === 'income' ? (available - (expectedMap[c.id] || 0)) : (available + (expectedMap[c.id] || 0));
     return `
       <div class="cat-row">
         <div class="top-line">
@@ -1174,42 +1222,47 @@ async function loadBudget() {
       </div>`;
   }
 
-  container.innerHTML = (byParent['root'] || []).map(renderNode).join('');
+  const roots = byParent['root'] || [];
+  const expenseRoots = roots.filter(c => c.type !== 'income');
+  const incomeRoots = roots.filter(c => c.type === 'income');
+  containerExpense.innerHTML = expenseRoots.length ? expenseRoots.map(c => renderNode(c, 'expense')).join('') : '<div class="empty">Nog geen uitgavencategorieën.</div>';
+  containerIncome.innerHTML = incomeRoots.length ? incomeRoots.map(c => renderNode(c, 'income')).join('') : '<div class="empty">Nog geen inkomstencategorieën.</div>';
 
-  container.querySelectorAll('.assign-minus').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const inp = container.querySelector(`.assign[data-cat="${btn.dataset.cat}"]`);
-      inp.value = (parseFloat(inp.value) - 50).toFixed(2);
-      inp.dispatchEvent(new Event('change'));
+  [containerExpense, containerIncome].forEach(container => {
+    container.querySelectorAll('.assign-minus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const inp = container.querySelector(`.assign[data-cat="${btn.dataset.cat}"]`);
+        inp.value = (parseFloat(inp.value) - 50).toFixed(2);
+        inp.dispatchEvent(new Event('change'));
+      });
     });
-  });
-  container.querySelectorAll('.assign-plus').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const inp = container.querySelector(`.assign[data-cat="${btn.dataset.cat}"]`);
-      inp.value = (parseFloat(inp.value) + 50).toFixed(2);
-      inp.dispatchEvent(new Event('change'));
+    container.querySelectorAll('.assign-plus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const inp = container.querySelector(`.assign[data-cat="${btn.dataset.cat}"]`);
+        inp.value = (parseFloat(inp.value) + 50).toFixed(2);
+        inp.dispatchEvent(new Event('change'));
+      });
     });
-  });
-  container.querySelectorAll('input.assign').forEach(inp => {
-    inp.addEventListener('focus', function() { this.value = ''; });
-  });
-  container.querySelectorAll('[data-budget-toggle]').forEach(h3 => {
-    h3.addEventListener('click', () => {
-      const id = Number(h3.dataset.budgetToggle);
-      if (collapsedCatIds.has(id)) collapsedCatIds.delete(id); else collapsedCatIds.add(id);
-      loadBudget();
+    container.querySelectorAll('input.assign').forEach(inp => {
+      inp.addEventListener('focus', function() { this.value = ''; });
     });
-  });
-
-  document.querySelectorAll('#budget-groups input.assign').forEach(inp => {
-    inp.addEventListener('change', async () => {
-      const catId = inp.dataset.cat;
-      const value = parseFloat(inp.value) || 0;
-      const { monthStr: m } = monthBounds();
-      const { error } = await sb.from('budget_months')
-        .upsert({ category_id: catId, month: m, assigned: value }, { onConflict: 'category_id,month' });
-      if (error) { console.error(error); alert('Opslaan van toewijzing mislukt.'); }
-      loadBudget();
+    container.querySelectorAll('[data-budget-toggle]').forEach(h3 => {
+      h3.addEventListener('click', () => {
+        const id = Number(h3.dataset.budgetToggle);
+        if (collapsedCatIds.has(id)) collapsedCatIds.delete(id); else collapsedCatIds.add(id);
+        loadBudget();
+      });
+    });
+    container.querySelectorAll('input.assign').forEach(inp => {
+      inp.addEventListener('change', async () => {
+        const catId = inp.dataset.cat;
+        const value = parseFloat(inp.value) || 0;
+        const { monthStr: m } = monthBounds();
+        const { error } = await sb.from('budget_months')
+          .upsert({ category_id: catId, month: m, assigned: value }, { onConflict: 'category_id,month' });
+        if (error) { console.error(error); alert('Opslaan van toewijzing mislukt.'); }
+        loadBudget();
+      });
     });
   });
 }
@@ -2074,10 +2127,15 @@ async function generateDueRecurringTransactions() {
 
 // ---- Categorie-beheer (boomstructuur) ----
 async function loadCategoryManager() {
-  const { data: cats, error } = await sb.from('categories').select('id, parent_id, name, sort_order').eq('scope', 'prive').order('sort_order');
+  const { data: cats, error } = await sb.from('categories').select('id, parent_id, name, sort_order, type').eq('scope', 'prive').order('sort_order');
   if (error) { console.error(error); return; }
-  const el = document.getElementById('categories-tree');
-  if (!cats || cats.length === 0) { el.innerHTML = '<div class="empty">Nog geen categorieën.</div>'; return; }
+  const elExpense = document.getElementById('categories-tree-expense');
+  const elIncome = document.getElementById('categories-tree-income');
+  if (!cats || cats.length === 0) {
+    elExpense.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
+    elIncome.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
+    return;
+  }
 
   const byParent = {};
   cats.forEach(c => { const k = c.parent_id || 'root'; (byParent[k] = byParent[k] || []).push(c); });
@@ -2105,27 +2163,33 @@ async function loadCategoryManager() {
     `;
   }
 
-  el.innerHTML = (byParent['root'] || []).map(c => renderRow(c, 0)).join('');
+  const roots = byParent['root'] || [];
+  const expenseRoots = roots.filter(c => c.type !== 'income');
+  const incomeRoots = roots.filter(c => c.type === 'income');
+  elExpense.innerHTML = expenseRoots.length ? expenseRoots.map(c => renderRow(c, 0)).join('') : '<div class="empty">Nog geen uitgavencategorieën.</div>';
+  elIncome.innerHTML = incomeRoots.length ? incomeRoots.map(c => renderRow(c, 0)).join('') : '<div class="empty">Nog geen inkomstencategorieën.</div>';
 
-  el.querySelectorAll('button[data-toggle]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const id = Number(btn.dataset.toggle);
-      if (collapsedCatIds.has(id)) collapsedCatIds.delete(id); else collapsedCatIds.add(id);
-      loadCategoryManager();
+  [elExpense, elIncome].forEach(el => {
+    el.querySelectorAll('button[data-toggle]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = Number(btn.dataset.toggle);
+        if (collapsedCatIds.has(id)) collapsedCatIds.delete(id); else collapsedCatIds.add(id);
+        loadCategoryManager();
+      });
     });
-  });
 
-  el.querySelectorAll('button[data-action]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.id;
-      if (btn.dataset.action === 'add') openCatModal('add', null, id);
-      else if (btn.dataset.action === 'edit') openCatModal('edit', id, null);
-      else if (btn.dataset.action === 'delete') deleteCategory(id);
+    el.querySelectorAll('button[data-action]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        if (btn.dataset.action === 'add') openCatModal('add', null, id);
+        else if (btn.dataset.action === 'edit') openCatModal('edit', id, null);
+        else if (btn.dataset.action === 'delete') deleteCategory(id);
+      });
     });
-  });
 
-  wireDragAndDrop(el, cats);
+    wireDragAndDrop(el, cats);
+  });
 }
 
 function clearDragClasses(el) {
@@ -2245,7 +2309,7 @@ let catModalEditId = null;
 async function openCatModal(mode, editId, presetParentId) {
   catModalMode = mode;
   catModalEditId = editId;
-  const { data: cats } = await sb.from('categories').select('id, parent_id, name').eq('scope', 'prive').order('sort_order');
+  const { data: cats } = await sb.from('categories').select('id, parent_id, name, type').eq('scope', 'prive').order('sort_order');
   const excluded = editId ? getDescendantIds(cats, editId).add(Number(editId)) : new Set();
   const options = (cats || []).filter(c => !excluded.has(c.id))
     .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
@@ -2256,13 +2320,22 @@ async function openCatModal(mode, editId, presetParentId) {
     document.getElementById('cat-modal-title').textContent = 'Categorie bewerken';
     document.getElementById('cat-name').value = current ? current.name : '';
     document.getElementById('cat-parent').value = current && current.parent_id ? current.parent_id : '';
+    document.getElementById('cat-type').value = (current && current.type === 'income') ? 'income' : 'expense';
   } else {
     document.getElementById('cat-modal-title').textContent = 'Nieuwe categorie';
     document.getElementById('cat-name').value = '';
     document.getElementById('cat-parent').value = presetParentId || '';
+    document.getElementById('cat-type').value = 'expense';
   }
+  updateCatTypeRowVisibility();
   document.getElementById('cat-modal-bg').classList.add('open');
 }
+
+function updateCatTypeRowVisibility() {
+  const isRoot = !document.getElementById('cat-parent').value;
+  document.getElementById('cat-type-row').style.display = isRoot ? 'block' : 'none';
+}
+document.getElementById('cat-parent').addEventListener('change', updateCatTypeRowVisibility);
 
 document.getElementById('add-root-cat-btn').addEventListener('click', () => openCatModal('add', null, null));
 document.getElementById('cat-cancel').addEventListener('click', () => document.getElementById('cat-modal-bg').classList.remove('open'));
@@ -2270,13 +2343,14 @@ document.getElementById('cat-cancel').addEventListener('click', () => document.g
 document.getElementById('cat-save').addEventListener('click', async () => {
   const name = document.getElementById('cat-name').value.trim();
   const parent_id = document.getElementById('cat-parent').value || null;
+  const type = parent_id ? null : document.getElementById('cat-type').value;
   if (!name) { alert('Vul een naam in.'); return; }
 
   if (catModalMode === 'edit') {
-    const { error } = await sb.from('categories').update({ name, parent_id }).eq('id', catModalEditId);
+    const { error } = await sb.from('categories').update({ name, parent_id, type }).eq('id', catModalEditId);
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
   } else {
-    const { error } = await sb.from('categories').insert({ name, parent_id, scope: 'prive' });
+    const { error } = await sb.from('categories').insert({ name, parent_id, type, scope: 'prive' });
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
   }
   document.getElementById('cat-modal-bg').classList.remove('open');
