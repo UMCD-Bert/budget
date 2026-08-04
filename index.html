@@ -118,6 +118,12 @@
   .progress-bar-track { height:5px; border-radius:3px; background:#e0e0e0; margin-top:6px; overflow:hidden; }
   .progress-bar-fill { height:100%; border-radius:3px; }
   .ie-column-total { display:flex; justify-content:space-between; align-items:center; font-weight:bold; padding:10px 12px; margin-top:6px; border-top:2px solid var(--border); font-size:13px; }
+  .dash-chart { display:block; margin:6px 0; }
+  .dash-bar-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .dash-bar-label { width:120px; flex-shrink:0; font-size:12px; overflow-wrap:break-word; }
+  .dash-bar-track { flex:1; height:14px; background:#e0e0e0; border-radius:4px; overflow:hidden; }
+  .dash-bar-fill { height:100%; background:var(--red); border-radius:4px; }
+  .dash-bar-value { width:80px; flex-shrink:0; text-align:right; font-size:12px; font-weight:bold; }
   .select-toggle-btn { font-size:12px; color:var(--green); background:none; border:1px solid var(--green); border-radius:6px; padding:4px 10px; cursor:pointer; }
   .amount-type-toggle { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-top:2px; }
   .amount-type-toggle button { flex:1; padding:8px; border:none; background:#fff; font-size:14px; cursor:pointer; }
@@ -282,9 +288,17 @@
       <div id="zak-categories-list"><div class="empty">Nog geen zakelijke categorieën.</div></div>
     </div>
     <div class="group">
-      <h3>Transacties <button class="select-toggle-btn" id="zak-select-toggle" style="margin-left:8px;">Selecteren</button> <button class="select-toggle-btn" id="zak-add-txn-btn" style="margin-left:8px;">+ Nieuwe transactie</button></h3>
-      <div style="text-align:left; margin-bottom:6px;">
-        <button class="select-toggle-btn" id="zak-account-filter-toggle">Filter op rekening</button>
+      <h3>Transacties</h3>
+      <div class="sticky-actions-bar">
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+          <button class="select-toggle-btn" id="zak-select-toggle">Selecteren</button>
+          <button class="select-toggle-btn" id="zak-add-txn-btn">+ Nieuwe transactie</button>
+          <button class="select-toggle-btn" id="zak-account-filter-toggle">Filter op rekening</button>
+          <button class="select-toggle-btn" id="zak-sort-toggle" title="Sorteervolgorde omdraaien">↓ Oudste eerst</button>
+        </div>
+        <div style="margin-bottom:6px;">
+          <input type="text" id="zak-txn-search" placeholder="Zoek op payee of omschrijving..." style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; box-sizing:border-box;">
+        </div>
       </div>
       <div id="zak-account-filter-panel" style="display:none; background:var(--card); border-radius:8px; padding:10px; margin-bottom:8px;">
         <div id="zak-account-filter-list"></div>
@@ -651,7 +665,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.15';
+const APP_VERSION = 'v3.17';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -863,24 +877,76 @@ async function loadDashboard() {
     return sorted.length % 2 === 0 ? Math.round((sorted[mid - 1] + sorted[mid]) / 2) : sorted[mid];
   }
 
-  ageEl.innerHTML = months.map(m => {
+  function renderMoneyAgeChart(monthsArr, ages) {
+    if (monthsArr.length === 0) return '<div class="empty">Nog geen gegevens.</div>';
+    const w = 600, h = 180, padLeft = 12, padRight = 12, padTop = 16, padBottom = 28;
+    const plotW = w - padLeft - padRight, plotH = h - padTop - padBottom;
+    const validAges = ages.filter(a => a !== null);
+    const maxAge = Math.max(...(validAges.length ? validAges : [30]), 30);
+    const stepX = monthsArr.length > 1 ? plotW / (monthsArr.length - 1) : 0;
+    const xFor = i => padLeft + i * stepX;
+    const yFor = a => padTop + plotH - (a / maxAge) * plotH;
+    const points = ages.map((a, i) => a === null ? null : `${xFor(i)},${yFor(a)}`).filter(Boolean).join(' ');
+    const dots = ages.map((a, i) => a === null ? '' : `<circle cx="${xFor(i)}" cy="${yFor(a)}" r="3" fill="${a > 30 ? '#f9a825' : '#1b5e20'}" data-month="${monthsArr[i]}" data-age="${a}"></circle>`).join('');
+    const thresholdY = yFor(30);
+    const labelEvery = Math.max(1, Math.ceil(monthsArr.length / 6));
+    const labels = monthsArr.map((m, i) => (i % labelEvery === 0 || i === monthsArr.length - 1) ? `<text x="${xFor(i)}" y="${h - 8}" font-size="9" text-anchor="middle" fill="#888">${m.slice(2)}</text>` : '').join('');
+    return `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;">
+      <line x1="${padLeft}" y1="${thresholdY}" x2="${w - padRight}" y2="${thresholdY}" stroke="#f9a825" stroke-dasharray="4,3" stroke-width="1"></line>
+      <polyline points="${points}" fill="none" stroke="#1b5e20" stroke-width="2"></polyline>
+      ${dots}
+      ${labels}
+    </svg>`;
+  }
+
+  function renderTopCategoriesChart(sortedCatsArr) {
+    if (sortedCatsArr.length === 0) return '<div class="empty">Nog geen uitgaven.</div>';
+    const maxAbs = Math.max(...sortedCatsArr.map(([, t]) => Math.abs(t)), 1);
+    return sortedCatsArr.map(([name, total]) => {
+      const pct = (Math.abs(total) / maxAbs) * 100;
+      return `
+        <div class="dash-bar-row">
+          <div class="dash-bar-label">${name}</div>
+          <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%;"></div></div>
+          <div class="dash-bar-value">${formatEuro(total)}</div>
+        </div>`;
+    }).join('');
+  }
+
+  function renderMonthlySaldoChart(monthsArr, values) {
+    if (monthsArr.length === 0) return '<div class="empty">Nog geen gegevens.</div>';
+    const w = 600, h = 200, padLeft = 4, padRight = 4, padTop = 12, padBottom = 28;
+    const plotW = w - padLeft - padRight, plotH = h - padTop - padBottom;
+    const maxAbs = Math.max(...values.map(v => Math.abs(v)), 1);
+    const zeroY = padTop + plotH / 2;
+    const slot = plotW / monthsArr.length;
+    const barW = Math.max(4, slot * 0.6);
+    const bars = values.map((v, i) => {
+      const x = padLeft + i * slot + (slot - barW) / 2;
+      const barH = (Math.abs(v) / maxAbs) * (plotH / 2);
+      const y = v >= 0 ? zeroY - barH : zeroY;
+      const color = v >= 0 ? '#43a047' : '#c62828';
+      return `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" fill="${color}" data-month="${monthsArr[i]}" data-saldo="${v}"></rect>`;
+    }).join('');
+    const labelEvery = Math.max(1, Math.ceil(monthsArr.length / 6));
+    const labels = monthsArr.map((m, i) => (i % labelEvery === 0 || i === monthsArr.length - 1) ? `<text x="${padLeft + i * slot + slot / 2}" y="${h - 8}" font-size="9" text-anchor="middle" fill="#888">${m.slice(2)}</text>` : '').join('');
+    return `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;">
+      <line x1="${padLeft}" y1="${zeroY}" x2="${w - padRight}" y2="${zeroY}" stroke="#ccc" stroke-width="1"></line>
+      ${bars}
+      ${labels}
+    </svg>`;
+  }
+
+  ageEl.innerHTML = renderMoneyAgeChart(months, months.map(m => {
     const nextMonth = new Date(m + '-01T00:00:00');
     nextMonth.setMonth(nextMonth.getMonth() + 1);
-    const cutoff = toLocalISODate(nextMonth);
-    const age = computeAgeUpTo(cutoff);
-    return `<div class="acc-row"><div>${m}</div><div>${age === null ? '–' : age + ' dagen'}</div></div>`;
-  }).join('');
+    return computeAgeUpTo(toLocalISODate(nextMonth));
+  }));
 
   const sortedCats = Object.entries(catTotals).sort((a, b) => a[1] - b[1]);
-  catEl.innerHTML = sortedCats.length === 0 ? '<div class="empty">Nog geen uitgaven.</div>' :
-    sortedCats.map(([name, total]) => `<div class="acc-row"><div>${name}</div><div>${formatEuro(total)}</div></div>`).join('');
+  catEl.innerHTML = renderTopCategoriesChart(sortedCats);
 
-  saldoEl.innerHTML = months.map(m => {
-    const inc = monthlyIncome[m] || 0;
-    const exp = monthlyExpense[m] || 0;
-    const saldo = inc + exp;
-    return `<div class="acc-row"><div>${m}</div><div style="font-weight:bold; color:${saldo >= 0 ? 'var(--green)' : 'var(--red)'};">${formatEuro(saldo)}</div></div>`;
-  }).join('');
+  saldoEl.innerHTML = renderMonthlySaldoChart(months, months.map(m => (monthlyIncome[m] || 0) + (monthlyExpense[m] || 0)));
 }
 
 function bankSelectOptions(selected) {
@@ -2713,6 +2779,9 @@ async function deleteCategory(id) {
 }
 
 // ---- Zakelijk ----
+let zakTxnSearch = '';
+let zakSortDesc = false;
+
 async function loadZakelijk() {
   const { startStr, endStr } = monthBounds();
 
@@ -2720,7 +2789,7 @@ async function loadZakelijk() {
   const { data: zakCats } = await sb.from('categories').select('id, name').eq('scope', 'zakelijk').order('name');
 
   let zakTxnQuery = sb.from('transactions')
-    .select('id, date, payee, amount, cleared, link_type, category_id, categories(name), accounts!inner(scope, name, bank)')
+    .select('id, date, payee, notitie, amount, cleared, link_type, category_id, categories(name), accounts!inner(scope, name, bank)')
     .eq('accounts.scope', 'zakelijk')
     .gte('date', startStr).lt('date', endStr);
   if (zakAccountFilter.size > 0) zakTxnQuery = zakTxnQuery.in('account_id', [...zakAccountFilter]);
@@ -2767,10 +2836,15 @@ async function loadZakelijk() {
   }
 
   const txnsEl = document.getElementById('zak-transactions-list');
-  if (!zakTxns || zakTxns.length === 0) {
-    txnsEl.innerHTML = '<div class="empty">Nog geen zakelijke transacties.</div>';
+  const searchTerm = zakTxnSearch.trim().toLowerCase();
+  const filteredZakTxns = searchTerm
+    ? (zakTxns || []).filter(t => (t.payee || '').toLowerCase().includes(searchTerm) || (t.notitie || '').toLowerCase().includes(searchTerm))
+    : (zakTxns || []);
+  if (filteredZakTxns.length === 0) {
+    txnsEl.innerHTML = `<div class="empty">${searchTerm ? 'Geen transacties gevonden.' : 'Nog geen zakelijke transacties.'}</div>`;
   } else {
-    const sorted = [...zakTxns].sort((a, b) => a.date.localeCompare(b.date));
+    let sorted = [...filteredZakTxns].sort((a, b) => a.date.localeCompare(b.date));
+    if (zakSortDesc) sorted = sorted.reverse();
     const rowsChrono = sorted.map(t => ({
       id: t.id, date: t.date, payee: t.payee, amount: Number(t.amount), cleared: t.cleared,
       categoryName: t.categories?.name, link_type: t.link_type,
@@ -2787,6 +2861,15 @@ async function loadZakelijk() {
 }
 
 document.getElementById('zak-select-toggle').addEventListener('click', () => toggleBulkMode('zak', loadZakelijk));
+document.getElementById('zak-txn-search').addEventListener('input', (e) => {
+  zakTxnSearch = e.target.value;
+  loadZakelijk();
+});
+document.getElementById('zak-sort-toggle').addEventListener('click', () => {
+  zakSortDesc = !zakSortDesc;
+  document.getElementById('zak-sort-toggle').textContent = zakSortDesc ? '↑ Nieuwste eerst' : '↓ Oudste eerst';
+  loadZakelijk();
+});
 document.getElementById('zak-bulk-offset').addEventListener('click', () => bulkOffset('zak', loadZakelijk));
 document.getElementById('zak-bulk-move-account').addEventListener('click', () => bulkMoveAccount('zak', loadZakelijk));
 document.getElementById('zak-bulk-move-date').addEventListener('click', () => bulkMoveDate('zak', loadZakelijk));
