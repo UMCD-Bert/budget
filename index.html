@@ -86,10 +86,29 @@
   .ie-column-heading { font-size:13px; text-transform:uppercase; letter-spacing:.5px; margin:0 0 8px 0; padding-bottom:6px; border-bottom:2px solid var(--border); }
   .ie-column-heading.expense-heading { color:var(--red); border-color:var(--red); }
   .ie-column-heading.income-heading { color:var(--green); border-color:var(--green); }
+  .ie-column-heading.reservation-heading { color:#8e5a00; border-color:#8e5a00; }
+  .ie-tabs { display:none; gap:6px; margin-bottom:10px; }
+  .ie-tab-btn { flex:1; padding:8px; border:1px solid var(--border); background:var(--card); border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer; color:#666; }
+  .ie-tab-btn.active { background:#1b5e20; color:#fff; border-color:#1b5e20; }
   @media (max-width:600px) {
     .income-expense-columns { flex-direction:column; }
-    .income-expense-columns .ie-column { width:100%; margin-bottom:14px; }
+    .income-expense-columns .ie-column { width:100%; margin-bottom:14px; display:none; }
+    .income-expense-columns .ie-column.mobile-active { display:block; }
+    .ie-tabs { display:flex; }
   }
+  .cat-tree-row.hoofdcat { border-left:4px solid #1b5e20; font-weight:bold; font-size:15px; margin-top:10px; }
+  .cat-tree-row.subcat { font-weight:normal; font-size:13px; color:#444; background:transparent; box-shadow:none; }
+  .budget-group.hoofdcat-group > h3 { border-left:4px solid #1b5e20; padding-left:8px; font-size:14px; }
+  .cat-numbers { display:flex; gap:6px; align-items:center; margin-top:4px; }
+  .cat-numbers .num-col { flex:1; min-width:0; text-align:center; }
+  .cat-numbers .num-label { font-size:9px; text-transform:uppercase; color:#999; letter-spacing:.3px; }
+  .cat-numbers .num-value { font-weight:bold; font-size:13px; }
+  .cat-numbers .num-value.positive { color:var(--green); }
+  .cat-numbers .num-value.negative { color:var(--red); }
+  .cat-numbers input.assign { width:100%; text-align:center; border:1px solid var(--border); border-radius:4px; padding:4px 2px; font-weight:bold; box-sizing:border-box; }
+  .progress-bar-track { height:5px; border-radius:3px; background:#e0e0e0; margin-top:6px; overflow:hidden; }
+  .progress-bar-fill { height:100%; border-radius:3px; }
+  .ie-column-total { display:flex; justify-content:space-between; align-items:center; font-weight:bold; padding:10px 12px; margin-top:6px; border-top:2px solid var(--border); font-size:13px; }
   .select-toggle-btn { font-size:12px; color:var(--green); background:none; border:1px solid var(--green); border-radius:6px; padding:4px 10px; cursor:pointer; }
   .amount-type-toggle { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-top:2px; }
   .amount-type-toggle button { flex:1; padding:8px; border:none; background:#fff; font-size:14px; cursor:pointer; }
@@ -151,14 +170,26 @@
       <div id="budget-month-label" style="font-weight:bold; text-transform:capitalize; min-width:140px; text-align:center;"></div>
       <button id="budget-month-next" class="select-toggle-btn" style="padding:4px 12px; font-size:16px;">›</button>
     </div>
-    <div class="income-expense-columns">
-      <div class="ie-column">
-        <h3 class="ie-column-heading expense-heading">Uitgaven</h3>
-        <div id="budget-groups-expense"><div class="empty">Nog geen categorieën.</div></div>
-      </div>
-      <div class="ie-column">
+    <div class="ie-tabs" data-ie-tabs="budget">
+      <button class="ie-tab-btn" data-ie-type="income">Inkomsten</button>
+      <button class="ie-tab-btn active" data-ie-type="expense">Uitgaven</button>
+      <button class="ie-tab-btn" data-ie-type="reservation">Reserveringen</button>
+    </div>
+    <div class="income-expense-columns" data-ie-columns="budget">
+      <div class="ie-column" data-ie-type="income">
         <h3 class="ie-column-heading income-heading">Inkomsten</h3>
         <div id="budget-groups-income"><div class="empty">Nog geen categorieën.</div></div>
+        <div id="budget-total-income" class="ie-column-total"></div>
+      </div>
+      <div class="ie-column mobile-active" data-ie-type="expense">
+        <h3 class="ie-column-heading expense-heading">Uitgaven</h3>
+        <div id="budget-groups-expense"><div class="empty">Nog geen categorieën.</div></div>
+        <div id="budget-total-expense" class="ie-column-total"></div>
+      </div>
+      <div class="ie-column" data-ie-type="reservation">
+        <h3 class="ie-column-heading reservation-heading">Reserveringen</h3>
+        <div id="budget-groups-reservation"><div class="empty">Nog geen categorieën.</div></div>
+        <div id="budget-total-reservation" class="ie-column-total"></div>
       </div>
     </div>
   </div>
@@ -207,14 +238,23 @@
 
   <div id="tab-categories" style="display:none">
     <button class="btn-save" id="add-root-cat-btn" style="width:100%; padding:10px; margin-bottom:10px;">+ Nieuwe hoofdcategorie</button>
-    <div class="income-expense-columns">
-      <div class="ie-column">
+    <div class="ie-tabs" data-ie-tabs="cat">
+      <button class="ie-tab-btn" data-ie-type="income">Inkomsten</button>
+      <button class="ie-tab-btn active" data-ie-type="expense">Uitgaven</button>
+      <button class="ie-tab-btn" data-ie-type="reservation">Reserveringen</button>
+    </div>
+    <div class="income-expense-columns" data-ie-columns="cat">
+      <div class="ie-column" data-ie-type="income">
+        <h3 class="ie-column-heading income-heading">Inkomsten</h3>
+        <div id="categories-tree-income"><div class="empty">Nog geen categorieën.</div></div>
+      </div>
+      <div class="ie-column mobile-active" data-ie-type="expense">
         <h3 class="ie-column-heading expense-heading">Uitgaven</h3>
         <div id="categories-tree-expense"><div class="empty">Nog geen categorieën.</div></div>
       </div>
-      <div class="ie-column">
-        <h3 class="ie-column-heading income-heading">Inkomsten</h3>
-        <div id="categories-tree-income"><div class="empty">Nog geen categorieën.</div></div>
+      <div class="ie-column" data-ie-type="reservation">
+        <h3 class="ie-column-heading reservation-heading">Reserveringen</h3>
+        <div id="categories-tree-reservation"><div class="empty">Nog geen categorieën.</div></div>
       </div>
     </div>
     <div id="drag-indicator" style="display:none; position:fixed; z-index:50; background:#1b5e20; color:#fff; padding:5px 10px; border-radius:6px; font-size:12px; pointer-events:none; white-space:nowrap;"></div>
@@ -585,6 +625,7 @@
       <select id="cat-type">
         <option value="expense">Uitgaven</option>
         <option value="income">Inkomsten</option>
+        <option value="reservation">Reserveringen</option>
       </select>
     </div>
     <div class="actions">
@@ -601,7 +642,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.11';
+const APP_VERSION = 'v3.12';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -611,6 +652,23 @@ function updateTopbarHeightVar() {
 window.addEventListener('resize', updateTopbarHeightVar);
 window.addEventListener('orientationchange', updateTopbarHeightVar);
 updateTopbarHeightVar();
+
+function wireIeTabs(key) {
+  const tabBar = document.querySelector(`[data-ie-tabs="${key}"]`);
+  const columnsWrap = document.querySelector(`[data-ie-columns="${key}"]`);
+  if (!tabBar || !columnsWrap) return;
+  tabBar.querySelectorAll('.ie-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBar.querySelectorAll('.ie-tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      columnsWrap.querySelectorAll('.ie-column').forEach(col => {
+        col.classList.toggle('mobile-active', col.dataset.ieType === btn.dataset.ieType);
+      });
+    });
+  });
+}
+wireIeTabs('cat');
+wireIeTabs('budget');
 
 // ---- Tab switching ----
 let activeTab = 'budget';
@@ -864,7 +922,8 @@ function rootTypeOfCategory(catId, catsById) {
   let node = catsById[catId];
   const seen = new Set();
   while (node && node.parent_id && !seen.has(node.id)) { seen.add(node.id); node = catsById[node.parent_id]; }
-  return (node && node.type === 'income') ? 'income' : 'expense';
+  const t = node && node.type;
+  return (t === 'income' || t === 'reservation') ? t : 'expense';
 }
 
 async function copyPreviousMonthBudget() {
@@ -1224,6 +1283,7 @@ async function loadBudget() {
   (cats || []).forEach(c => catsById[c.id] = c);
   function rootTypeOf(catId) { return rootTypeOfCategory(catId, catsById); }
 
+  // Deze maand alleen (voor de Begroot/Gerealiseerd-kolommen en de voortgangsbalk)
   const { data: budgetRows } = await sb
     .from('budget_months')
     .select('category_id, assigned')
@@ -1245,6 +1305,21 @@ async function loadBudget() {
   const spentMap = {};
   (spentRows || []).forEach(r => { if (r.category_id) spentMap[r.category_id] = (spentMap[r.category_id] || 0) + Number(r.amount); });
 
+  // Cumulatief t/m de bekeken maand (voor Resterend — bouwt op over maanden heen, voor alle drie de typen)
+  const { data: cumBudgetRows } = await sb
+    .from('budget_months')
+    .select('category_id, assigned')
+    .lte('month', monthStr);
+  const cumAssignedMap = {};
+  (cumBudgetRows || []).forEach(r => cumAssignedMap[r.category_id] = (cumAssignedMap[r.category_id] || 0) + Number(r.assigned));
+
+  const { data: cumSpentRows } = await sb
+    .from('transactions')
+    .select('category_id, amount')
+    .lt('date', endStr);
+  const cumSpentMap = {};
+  (cumSpentRows || []).forEach(r => { if (r.category_id) cumSpentMap[r.category_id] = (cumSpentMap[r.category_id] || 0) + Number(r.amount); });
+
   const { data: recurringRows } = await sb
     .from('recurring_transactions')
     .select('category_id, amount, next_date')
@@ -1254,8 +1329,8 @@ async function loadBudget() {
   (recurringRows || []).forEach(r => { if (r.category_id) expectedMap[r.category_id] = (expectedMap[r.category_id] || 0) + Number(r.amount); });
 
   // Ready to Assign: startsaldi + alle ooit binnengekomen ongecategoriseerde privé-transacties min alles wat ooit aan
-  // UITGAVEN-categorieën is toegewezen. Toewijzingen aan inkomsten-categorieën tellen hier niet mee: dat is een
-  // verwacht bedrag (forward-looking target), geen echte oormerking van al beschikbaar geld.
+  // UITGAVEN- en RESERVERINGS-categorieën is toegewezen. Toewijzingen aan inkomsten-categorieën tellen hier niet mee: dat
+  // is een verwacht bedrag (forward-looking target), geen echte oormerking van al beschikbaar geld.
   const { data: priveAccountsForRta } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
   const totalStartingBalance = (priveAccountsForRta || []).reduce((s, a) => s + Number(a.starting_balance), 0);
   const { data: unassignedTxns } = await sb.from('transactions').select('amount, accounts!inner(scope)').is('category_id', null).eq('accounts.scope', 'prive');
@@ -1279,9 +1354,15 @@ async function loadBudget() {
 
   const containerExpense = document.getElementById('budget-groups-expense');
   const containerIncome = document.getElementById('budget-groups-income');
+  const containerReservation = document.getElementById('budget-groups-reservation');
+  const totalExpenseEl = document.getElementById('budget-total-expense');
+  const totalIncomeEl = document.getElementById('budget-total-income');
+  const totalReservationEl = document.getElementById('budget-total-reservation');
   if (!cats || cats.length === 0) {
     containerExpense.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
     containerIncome.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
+    containerReservation.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
+    totalExpenseEl.innerHTML = ''; totalIncomeEl.innerHTML = ''; totalReservationEl.innerHTML = '';
     return;
   }
 
@@ -1289,22 +1370,53 @@ async function loadBudget() {
   cats.forEach(c => { const k = c.parent_id || 'root'; (byParent[k] = byParent[k] || []).push(c); });
   Object.values(byParent).forEach(arr => arr.sort((a,b) => a.sort_order - b.sort_order));
 
-  function computeSums(nodeId, type) {
-    const children = byParent[nodeId] || [];
-    if (children.length === 0) {
-      const assigned = assignedMap[nodeId] || 0;
-      const spent = spentMap[nodeId] || 0;
-      const available = type === 'income' ? (assigned - spent) : (assigned + spent);
-      const expected = type === 'income' ? (available - (expectedMap[nodeId] || 0)) : (available + (expectedMap[nodeId] || 0));
-      return { assigned, available, expected };
-    }
-    return children.reduce((acc, ch) => {
-      const s = computeSums(ch.id, type);
-      return { assigned: acc.assigned + s.assigned, available: acc.available + s.available, expected: acc.expected + s.expected };
-    }, { assigned: 0, available: 0, expected: 0 });
+  function leafNumbers(catId, type) {
+    const begroot = assignedMap[catId] || 0;
+    const gerealiseerd = spentMap[catId] || 0;
+    const cumBegroot = cumAssignedMap[catId] || 0;
+    const cumGerealiseerd = cumSpentMap[catId] || 0;
+    const resterend = type === 'income' ? (cumBegroot - cumGerealiseerd) : (cumBegroot + cumGerealiseerd);
+    return { begroot, gerealiseerd, resterend };
   }
 
-  function renderNode(c, type) {
+  function computeSums(nodeId, type) {
+    const children = byParent[nodeId] || [];
+    if (children.length === 0) return leafNumbers(nodeId, type);
+    return children.reduce((acc, ch) => {
+      const s = computeSums(ch.id, type);
+      return { begroot: acc.begroot + s.begroot, gerealiseerd: acc.gerealiseerd + s.gerealiseerd, resterend: acc.resterend + s.resterend };
+    }, { begroot: 0, gerealiseerd: 0, resterend: 0 });
+  }
+
+  function numbersBlock(n, editableCatId) {
+    const begrootCell = editableCatId != null
+      ? `<div class="num-col">
+           <div class="num-label">Begroot</div>
+           <div style="display:flex; align-items:center; gap:2px;">
+             <button type="button" class="stepper-btn assign-minus" data-cat="${editableCatId}" style="width:22px; height:26px; font-size:11px; padding:0;">−</button>
+             <input class="assign" data-cat="${editableCatId}" type="number" step="50" value="${n.begroot.toFixed(2)}">
+             <button type="button" class="stepper-btn assign-plus" data-cat="${editableCatId}" style="width:22px; height:26px; font-size:11px; padding:0;">+</button>
+           </div>
+         </div>`
+      : `<div class="num-col"><div class="num-label">Begroot</div><div class="num-value">${formatEuro(n.begroot)}</div></div>`;
+    return `
+      <div class="cat-numbers">
+        ${begrootCell}
+        <div class="num-col"><div class="num-label">Gerealiseerd</div><div class="num-value">${formatEuro(n.gerealiseerd)}</div></div>
+        <div class="num-col"><div class="num-label">Resterend</div><div class="num-value ${n.resterend >= 0 ? 'positive' : 'negative'}">${formatEuro(n.resterend)}</div></div>
+      </div>`;
+  }
+
+  function progressBar(n) {
+    const target = Math.abs(n.begroot);
+    const actual = Math.abs(n.gerealiseerd);
+    const pct = target > 0 ? Math.min(100, (actual / target) * 100) : (actual > 0 ? 100 : 0);
+    const over = target > 0 && actual > target;
+    const color = over ? 'var(--red)' : '#43a047';
+    return `<div class="progress-bar-track"><div class="progress-bar-fill" style="width:${pct}%; background:${color};"></div></div>`;
+  }
+
+  function renderNode(c, type, depth) {
     const children = byParent[c.id];
     if (children && children.length > 0) {
       const isCollapsed = collapsedCatIds.has(c.id);
@@ -1312,35 +1424,44 @@ async function loadBudget() {
       const header = `
         <h3 style="cursor:pointer;" data-budget-toggle="${c.id}">
           <span>${isCollapsed ? '▸' : '▾'} ${c.name}</span>
-          ${isCollapsed ? `<span class="avail ${sums.available >= 0 ? 'positive' : 'negative'}" style="text-transform:none; font-size:13px;">${formatEuro(sums.available)}</span>` : ''}
-        </h3>`;
-      const body = isCollapsed ? '' : children.map(ch => renderNode(ch, type)).join('');
-      return `<div class="group">${header}${body}</div>`;
+        </h3>
+        ${numbersBlock(sums, null)}`;
+      const body = isCollapsed ? '' : children.map(ch => renderNode(ch, type, depth + 1)).join('');
+      return `<div class="group budget-group ${depth === 0 ? 'hoofdcat-group' : ''}">${header}${body}</div>`;
     }
-    const assigned = assignedMap[c.id] || 0;
-    const spent = spentMap[c.id] || 0;
-    const available = type === 'income' ? (assigned - spent) : (assigned + spent);
-    const expected = type === 'income' ? (available - (expectedMap[c.id] || 0)) : (available + (expectedMap[c.id] || 0));
+    const n = leafNumbers(c.id, type);
+    const expectedDue = expectedMap[c.id] || 0;
+    const resterendMetVerwacht = type === 'income' ? (n.resterend - expectedDue) : (n.resterend + expectedDue);
     return `
       <div class="cat-row">
         <div class="name">${c.name}</div>
-        <div class="top-line">
-          <button type="button" class="stepper-btn assign-minus" data-cat="${c.id}" style="width:32px; height:30px; font-size:12px; padding:0;">−</button>
-          <input class="assign" data-cat="${c.id}" type="number" step="50" value="${assigned.toFixed(2)}">
-          <button type="button" class="stepper-btn assign-plus" data-cat="${c.id}" style="width:32px; height:30px; font-size:12px; padding:0;">+</button>
-          <div class="avail ${available >= 0 ? 'positive' : 'negative'}">${formatEuro(available)}</div>
-        </div>
-        ${expected !== available ? `<div class="expected">Verwacht: ${formatEuro(expected)}</div>` : ''}
+        ${numbersBlock(n, c.id)}
+        ${progressBar(n)}
+        ${expectedDue !== 0 ? `<div class="expected">Nog te verwachten deze maand: ${formatEuro(resterendMetVerwacht)}</div>` : ''}
       </div>`;
   }
 
   const roots = byParent['root'] || [];
-  const expenseRoots = roots.filter(c => c.type !== 'income');
+  const expenseRoots = roots.filter(c => c.type !== 'income' && c.type !== 'reservation');
   const incomeRoots = roots.filter(c => c.type === 'income');
-  containerExpense.innerHTML = expenseRoots.length ? expenseRoots.map(c => renderNode(c, 'expense')).join('') : '<div class="empty">Nog geen uitgavencategorieën.</div>';
-  containerIncome.innerHTML = incomeRoots.length ? incomeRoots.map(c => renderNode(c, 'income')).join('') : '<div class="empty">Nog geen inkomstencategorieën.</div>';
+  const reservationRoots = roots.filter(c => c.type === 'reservation');
 
-  [containerExpense, containerIncome].forEach(container => {
+  function renderColumn(container, totalEl, rootsForType, type, emptyMsg, totalLabel) {
+    container.innerHTML = rootsForType.length ? rootsForType.map(c => renderNode(c, type, 0)).join('') : `<div class="empty">${emptyMsg}</div>`;
+    const grandTotal = rootsForType.reduce((acc, c) => {
+      const s = computeSums(c.id, type);
+      return { begroot: acc.begroot + s.begroot, gerealiseerd: acc.gerealiseerd + s.gerealiseerd, resterend: acc.resterend + s.resterend };
+    }, { begroot: 0, gerealiseerd: 0, resterend: 0 });
+    totalEl.innerHTML = rootsForType.length ? `
+      <span>Totaal ${totalLabel}</span>
+      <span class="${grandTotal.resterend >= 0 ? 'positive' : 'negative'}" style="color:${grandTotal.resterend >= 0 ? 'var(--green)' : 'var(--red)'};">${formatEuro(grandTotal.resterend)} resterend</span>` : '';
+  }
+
+  renderColumn(containerExpense, totalExpenseEl, expenseRoots, 'expense', 'Nog geen uitgavencategorieën.', 'Uitgaven');
+  renderColumn(containerIncome, totalIncomeEl, incomeRoots, 'income', 'Nog geen inkomstencategorieën.', 'Inkomsten');
+  renderColumn(containerReservation, totalReservationEl, reservationRoots, 'reservation', 'Nog geen reserveringscategorieën.', 'Reserveringen');
+
+  [containerExpense, containerIncome, containerReservation].forEach(container => {
     container.querySelectorAll('.assign-minus').forEach(btn => {
       btn.addEventListener('click', () => {
         const inp = container.querySelector(`.assign[data-cat="${btn.dataset.cat}"]`);
@@ -2309,9 +2430,11 @@ async function loadCategoryManager() {
   if (error) { console.error(error); return; }
   const elExpense = document.getElementById('categories-tree-expense');
   const elIncome = document.getElementById('categories-tree-income');
+  const elReservation = document.getElementById('categories-tree-reservation');
   if (!cats || cats.length === 0) {
     elExpense.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
     elIncome.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
+    elReservation.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
     return;
   }
 
@@ -2323,8 +2446,9 @@ async function loadCategoryManager() {
     const children = byParent[c.id] || [];
     const hasKids = children.length > 0;
     const isCollapsed = collapsedCatIds.has(c.id);
+    const depthClass = depth === 0 ? 'hoofdcat' : 'subcat';
     return `
-      <div class="cat-tree-row" draggable="true" data-id="${c.id}" data-parent="${c.parent_id || ''}" style="margin-left:${depth * 16}px;">
+      <div class="cat-tree-row ${depthClass}" draggable="true" data-id="${c.id}" data-parent="${c.parent_id || ''}" style="margin-left:${depth * 16}px;">
         <div style="display:flex; align-items:center; gap:4px;">
           ${hasKids ? `<button data-toggle="${c.id}" style="border:none; background:none; cursor:pointer; font-size:11px; width:16px;">${isCollapsed ? '▸' : '▾'}</button>` : `<span style="width:16px; display:inline-block;"></span>`}
           <div>${c.name}</div>
@@ -2342,12 +2466,14 @@ async function loadCategoryManager() {
   }
 
   const roots = byParent['root'] || [];
-  const expenseRoots = roots.filter(c => c.type !== 'income');
+  const expenseRoots = roots.filter(c => c.type !== 'income' && c.type !== 'reservation');
   const incomeRoots = roots.filter(c => c.type === 'income');
+  const reservationRoots = roots.filter(c => c.type === 'reservation');
   elExpense.innerHTML = expenseRoots.length ? expenseRoots.map(c => renderRow(c, 0)).join('') : '<div class="empty">Nog geen uitgavencategorieën.</div>';
   elIncome.innerHTML = incomeRoots.length ? incomeRoots.map(c => renderRow(c, 0)).join('') : '<div class="empty">Nog geen inkomstencategorieën.</div>';
+  elReservation.innerHTML = reservationRoots.length ? reservationRoots.map(c => renderRow(c, 0)).join('') : '<div class="empty">Nog geen reserveringscategorieën.</div>';
 
-  [elExpense, elIncome].forEach(el => {
+  [elExpense, elIncome, elReservation].forEach(el => {
     el.querySelectorAll('button[data-toggle]').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -2498,7 +2624,7 @@ async function openCatModal(mode, editId, presetParentId) {
     document.getElementById('cat-modal-title').textContent = 'Categorie bewerken';
     document.getElementById('cat-name').value = current ? current.name : '';
     document.getElementById('cat-parent').value = current && current.parent_id ? current.parent_id : '';
-    document.getElementById('cat-type').value = (current && current.type === 'income') ? 'income' : 'expense';
+    document.getElementById('cat-type').value = (current && (current.type === 'income' || current.type === 'reservation')) ? current.type : 'expense';
   } else {
     document.getElementById('cat-modal-title').textContent = 'Nieuwe categorie';
     document.getElementById('cat-name').value = '';
