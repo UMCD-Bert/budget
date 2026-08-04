@@ -81,21 +81,16 @@
   .bulk-toolbar button.danger { background:var(--red); }
   .bulk-toolbar button.neutral { background:#888; }
   .bulk-sum { font-weight:bold; }
-  .income-expense-columns { display:flex; gap:16px; align-items:flex-start; }
-  .income-expense-columns .ie-column { flex:1; min-width:0; }
+  .income-expense-columns { display:block; }
+  .income-expense-columns .ie-column { display:none; }
+  .income-expense-columns .ie-column.mobile-active { display:block; }
   .ie-column-heading { font-size:13px; text-transform:uppercase; letter-spacing:.5px; margin:0 0 8px 0; padding-bottom:6px; border-bottom:2px solid var(--border); }
   .ie-column-heading.expense-heading { color:var(--red); border-color:var(--red); }
   .ie-column-heading.income-heading { color:var(--green); border-color:var(--green); }
   .ie-column-heading.reservation-heading { color:#8e5a00; border-color:#8e5a00; }
-  .ie-tabs { display:none; gap:6px; margin-bottom:10px; }
+  .ie-tabs { display:flex; gap:6px; margin-bottom:10px; }
   .ie-tab-btn { flex:1; padding:8px; border:1px solid var(--border); background:var(--card); border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer; color:#666; }
   .ie-tab-btn.active { background:#1b5e20; color:#fff; border-color:#1b5e20; }
-  @media (max-width:600px) {
-    .income-expense-columns { flex-direction:column; }
-    .income-expense-columns .ie-column { width:100%; margin-bottom:14px; display:none; }
-    .income-expense-columns .ie-column.mobile-active { display:block; }
-    .ie-tabs { display:flex; }
-  }
   .cat-tree-row.hoofdcat { border-left:4px solid #1b5e20; font-weight:bold; font-size:15px; margin-top:10px; }
   .cat-tree-row.subcat { font-weight:normal; font-size:13px; color:#444; background:transparent; box-shadow:none; }
   .budget-group.hoofdcat-group > h3 { border-left:4px solid #1b5e20; padding-left:8px; font-size:14px; }
@@ -650,7 +645,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.13';
+const APP_VERSION = 'v3.14';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
