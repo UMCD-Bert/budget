@@ -105,6 +105,14 @@
   .cat-numbers .num-value { font-weight:bold; font-size:13px; }
   .cat-numbers .num-value.positive { color:var(--green); }
   .cat-numbers .num-value.negative { color:var(--red); }
+  .leaf-begroot-row { display:flex; align-items:center; gap:6px; margin-top:6px; }
+  .leaf-begroot-row .leaf-stat-label { font-size:11px; color:#999; text-transform:uppercase; letter-spacing:.3px; min-width:48px; }
+  .leaf-begroot-row input.assign { flex:1; min-width:0; text-align:center; border:1px solid var(--border); border-radius:4px; padding:6px 2px; font-weight:bold; box-sizing:border-box; }
+  .leaf-stats-row { display:flex; justify-content:space-between; gap:12px; margin-top:6px; flex-wrap:wrap; }
+  .leaf-stats-row .leaf-stat-label { font-size:10px; text-transform:uppercase; color:#999; letter-spacing:.3px; margin-right:4px; }
+  .leaf-stats-row .leaf-stat-value { font-weight:bold; font-size:13px; }
+  .leaf-stats-row .leaf-stat-value.positive { color:var(--green); }
+  .leaf-stats-row .leaf-stat-value.negative { color:var(--red); }
   .cat-numbers input.assign { width:100%; text-align:center; border:1px solid var(--border); border-radius:4px; padding:4px 2px; font-weight:bold; box-sizing:border-box; }
   .progress-bar-track { height:5px; border-radius:3px; background:#e0e0e0; margin-top:6px; overflow:hidden; }
   .progress-bar-fill { height:100%; border-radius:3px; }
@@ -642,7 +650,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.12';
+const APP_VERSION = 'v3.13';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -1388,22 +1396,26 @@ async function loadBudget() {
     }, { begroot: 0, gerealiseerd: 0, resterend: 0 });
   }
 
-  function numbersBlock(n, editableCatId) {
-    const begrootCell = editableCatId != null
-      ? `<div class="num-col">
-           <div class="num-label">Begroot</div>
-           <div style="display:flex; align-items:center; gap:2px;">
-             <button type="button" class="stepper-btn assign-minus" data-cat="${editableCatId}" style="width:22px; height:26px; font-size:11px; padding:0;">−</button>
-             <input class="assign" data-cat="${editableCatId}" type="number" step="50" value="${n.begroot.toFixed(2)}">
-             <button type="button" class="stepper-btn assign-plus" data-cat="${editableCatId}" style="width:22px; height:26px; font-size:11px; padding:0;">+</button>
-           </div>
-         </div>`
-      : `<div class="num-col"><div class="num-label">Begroot</div><div class="num-value">${formatEuro(n.begroot)}</div></div>`;
+  function numbersBlock(n) {
     return `
       <div class="cat-numbers">
-        ${begrootCell}
+        <div class="num-col"><div class="num-label">Begroot</div><div class="num-value">${formatEuro(n.begroot)}</div></div>
         <div class="num-col"><div class="num-label">Gerealiseerd</div><div class="num-value">${formatEuro(n.gerealiseerd)}</div></div>
         <div class="num-col"><div class="num-label">Resterend</div><div class="num-value ${n.resterend >= 0 ? 'positive' : 'negative'}">${formatEuro(n.resterend)}</div></div>
+      </div>`;
+  }
+
+  function leafNumbersBlock(n, catId) {
+    return `
+      <div class="leaf-begroot-row">
+        <span class="leaf-stat-label">Begroot</span>
+        <button type="button" class="stepper-btn assign-minus" data-cat="${catId}" style="width:32px; height:30px; font-size:12px; padding:0;">−</button>
+        <input class="assign" data-cat="${catId}" type="number" step="50" value="${n.begroot.toFixed(2)}">
+        <button type="button" class="stepper-btn assign-plus" data-cat="${catId}" style="width:32px; height:30px; font-size:12px; padding:0;">+</button>
+      </div>
+      <div class="leaf-stats-row">
+        <div class="leaf-stat"><span class="leaf-stat-label">Gerealiseerd</span> <span class="leaf-stat-value">${formatEuro(n.gerealiseerd)}</span></div>
+        <div class="leaf-stat"><span class="leaf-stat-label">Resterend</span> <span class="leaf-stat-value ${n.resterend >= 0 ? 'positive' : 'negative'}">${formatEuro(n.resterend)}</span></div>
       </div>`;
   }
 
@@ -1425,7 +1437,7 @@ async function loadBudget() {
         <h3 style="cursor:pointer;" data-budget-toggle="${c.id}">
           <span>${isCollapsed ? '▸' : '▾'} ${c.name}</span>
         </h3>
-        ${numbersBlock(sums, null)}`;
+        ${numbersBlock(sums)}`;
       const body = isCollapsed ? '' : children.map(ch => renderNode(ch, type, depth + 1)).join('');
       return `<div class="group budget-group ${depth === 0 ? 'hoofdcat-group' : ''}">${header}${body}</div>`;
     }
@@ -1435,7 +1447,7 @@ async function loadBudget() {
     return `
       <div class="cat-row">
         <div class="name">${c.name}</div>
-        ${numbersBlock(n, c.id)}
+        ${leafNumbersBlock(n, c.id)}
         ${progressBar(n)}
         ${expectedDue !== 0 ? `<div class="expected">Nog te verwachten deze maand: ${formatEuro(resterendMetVerwacht)}</div>` : ''}
       </div>`;
