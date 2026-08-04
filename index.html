@@ -108,6 +108,12 @@
   .leaf-stats-row .leaf-stat-value { font-weight:bold; font-size:13px; }
   .leaf-stats-row .leaf-stat-value.positive { color:var(--green); }
   .leaf-stats-row .leaf-stat-value.negative { color:var(--red); }
+  .cat-row-summary { display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
+  .cat-row-summary .name { font-weight:600; }
+  .resterend-inline { font-weight:bold; font-size:15px; }
+  .resterend-inline.positive { color:var(--green); }
+  .resterend-inline.negative { color:var(--red); }
+  .cat-row-detail { margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); }
   .cat-numbers input.assign { width:100%; text-align:center; border:1px solid var(--border); border-radius:4px; padding:4px 2px; font-weight:bold; box-sizing:border-box; }
   .progress-bar-track { height:5px; border-radius:3px; background:#e0e0e0; margin-top:6px; overflow:hidden; }
   .progress-bar-fill { height:100%; border-radius:3px; }
@@ -645,7 +651,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.14';
+const APP_VERSION = 'v3.15';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -887,6 +893,7 @@ const bulkModeState = { main: false, acct: false, zak: false };
 const selectedTxnState = { main: new Set(), acct: new Set(), zak: new Set() };
 const txnAmountState = { main: {}, acct: {}, zak: {} };
 const collapsedCatIds = new Set();
+const expandedBudgetRowIds = new Set();
 const transactionAccountFilter = new Set();
 let mainTxnSearch = '';
 let mainSortDesc = false;
@@ -1376,10 +1383,13 @@ async function loadBudget() {
   function leafNumbers(catId, type) {
     const begroot = assignedMap[catId] || 0;
     const gerealiseerd = spentMap[catId] || 0;
+    if (type === 'income') {
+      // Inkomen is NIET cumulatief: iedere maand begint opnieuw (verwacht deze maand - ontvangen deze maand)
+      return { begroot, gerealiseerd, resterend: begroot - gerealiseerd };
+    }
     const cumBegroot = cumAssignedMap[catId] || 0;
     const cumGerealiseerd = cumSpentMap[catId] || 0;
-    const resterend = type === 'income' ? (cumBegroot - cumGerealiseerd) : (cumBegroot + cumGerealiseerd);
-    return { begroot, gerealiseerd, resterend };
+    return { begroot, gerealiseerd, resterend: cumBegroot + cumGerealiseerd };
   }
 
   function computeSums(nodeId, type) {
@@ -1410,7 +1420,6 @@ async function loadBudget() {
       </div>
       <div class="leaf-stats-row">
         <div class="leaf-stat"><span class="leaf-stat-label">Gerealiseerd</span> <span class="leaf-stat-value">${formatEuro(n.gerealiseerd)}</span></div>
-        <div class="leaf-stat"><span class="leaf-stat-label">Resterend</span> <span class="leaf-stat-value ${n.resterend >= 0 ? 'positive' : 'negative'}">${formatEuro(n.resterend)}</span></div>
       </div>`;
   }
 
@@ -1439,12 +1448,18 @@ async function loadBudget() {
     const n = leafNumbers(c.id, type);
     const expectedDue = expectedMap[c.id] || 0;
     const resterendMetVerwacht = type === 'income' ? (n.resterend - expectedDue) : (n.resterend + expectedDue);
+    const isExpanded = expandedBudgetRowIds.has(String(c.id));
     return `
       <div class="cat-row">
-        <div class="name">${c.name}</div>
-        ${leafNumbersBlock(n, c.id)}
+        <div class="cat-row-summary" data-expand-toggle="${c.id}">
+          <div class="name">${isExpanded ? '▾' : '▸'} ${c.name}</div>
+          <div class="resterend-inline ${n.resterend >= 0 ? 'positive' : 'negative'}">${formatEuro(n.resterend)}</div>
+        </div>
         ${progressBar(n)}
-        ${expectedDue !== 0 ? `<div class="expected">Nog te verwachten deze maand: ${formatEuro(resterendMetVerwacht)}</div>` : ''}
+        <div class="cat-row-detail" style="${isExpanded ? '' : 'display:none;'}">
+          ${leafNumbersBlock(n, c.id)}
+          ${expectedDue !== 0 ? `<div class="expected">Nog te verwachten deze maand: ${formatEuro(resterendMetVerwacht)}</div>` : ''}
+        </div>
       </div>`;
   }
 
@@ -1459,9 +1474,14 @@ async function loadBudget() {
       const s = computeSums(c.id, type);
       return { begroot: acc.begroot + s.begroot, gerealiseerd: acc.gerealiseerd + s.gerealiseerd, resterend: acc.resterend + s.resterend };
     }, { begroot: 0, gerealiseerd: 0, resterend: 0 });
+    const lastLabel = type === 'income' ? 'Saldo' : 'Resterend';
     totalEl.innerHTML = rootsForType.length ? `
-      <span>Totaal ${totalLabel}</span>
-      <span class="${grandTotal.resterend >= 0 ? 'positive' : 'negative'}" style="color:${grandTotal.resterend >= 0 ? 'var(--green)' : 'var(--red)'};">${formatEuro(grandTotal.resterend)} resterend</span>` : '';
+      <div style="font-weight:bold; margin-bottom:6px;">Totaal ${totalLabel}</div>
+      <div class="cat-numbers">
+        <div class="num-col"><div class="num-label">Begroot</div><div class="num-value">${formatEuro(grandTotal.begroot)}</div></div>
+        <div class="num-col"><div class="num-label">Gerealiseerd</div><div class="num-value">${formatEuro(grandTotal.gerealiseerd)}</div></div>
+        <div class="num-col"><div class="num-label">${lastLabel}</div><div class="num-value ${grandTotal.resterend >= 0 ? 'positive' : 'negative'}">${formatEuro(grandTotal.resterend)}</div></div>
+      </div>` : '';
   }
 
   renderColumn(containerExpense, totalExpenseEl, expenseRoots, 'expense', 'Nog geen uitgavencategorieën.', 'Uitgaven');
@@ -1490,6 +1510,13 @@ async function loadBudget() {
       h3.addEventListener('click', () => {
         const id = Number(h3.dataset.budgetToggle);
         if (collapsedCatIds.has(id)) collapsedCatIds.delete(id); else collapsedCatIds.add(id);
+        loadBudget();
+      });
+    });
+    container.querySelectorAll('[data-expand-toggle]').forEach(row => {
+      row.addEventListener('click', () => {
+        const id = row.dataset.expandToggle;
+        if (expandedBudgetRowIds.has(id)) expandedBudgetRowIds.delete(id); else expandedBudgetRowIds.add(id);
         loadBudget();
       });
     });
