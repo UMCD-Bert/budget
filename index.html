@@ -70,6 +70,8 @@
   .lightbox-bg img { max-width:92vw; max-height:92vh; object-fit:contain; border-radius:4px; }
   .lightbox-close { position:absolute; top:16px; right:20px; color:#fff; font-size:32px; background:none; border:none; cursor:pointer; line-height:1; }
   .txn-row { cursor:pointer; }
+  @keyframes txnFlashNew { 0% { background:#fff59d; } 100% { background:var(--card); } }
+  .txn-row.flash-new { animation: txnFlashNew 1.6s ease-out; }
   .date-group-heading { font-size:12px; font-weight:bold; color:#555; margin:10px 0 4px 2px; }
   .date-group-heading:first-child { margin-top:0; }
   .txn-cleared-cb { margin-right:8px; width:18px; height:18px; flex-shrink:0; }
@@ -100,6 +102,7 @@
   .cat-numbers .num-value { font-weight:bold; font-size:13px; }
   .cat-numbers .num-value.positive { color:var(--green); }
   .cat-numbers .num-value.negative { color:var(--red); }
+  .cat-numbers .num-value.neutral { color:#888; }
   .leaf-begroot-row { display:flex; align-items:center; gap:6px; margin-top:6px; }
   .leaf-begroot-row .leaf-stat-label { font-size:11px; color:#999; text-transform:uppercase; letter-spacing:.3px; min-width:48px; }
   .leaf-begroot-row input.assign { flex:1; min-width:0; text-align:center; border:1px solid var(--border); border-radius:4px; padding:6px 2px; font-weight:bold; box-sizing:border-box; }
@@ -113,6 +116,7 @@
   .resterend-inline { font-weight:bold; font-size:15px; }
   .resterend-inline.positive { color:var(--green); }
   .resterend-inline.negative { color:var(--red); }
+  .resterend-inline.neutral { color:#888; }
   .cat-row-detail { margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); }
   .cat-numbers input.assign { width:100%; text-align:center; border:1px solid var(--border); border-radius:4px; padding:4px 2px; font-weight:bold; box-sizing:border-box; }
   .progress-bar-track { height:5px; border-radius:3px; background:#e0e0e0; margin-top:6px; overflow:hidden; }
@@ -131,7 +135,7 @@
   .amount-type-toggle button.active-income { background:var(--green); color:#fff; }
   .amount-with-steppers { display:flex; align-items:center; gap:6px; }
   .amount-with-steppers input { flex:1; }
-  .stepper-btn { width:44px; height:38px; flex-shrink:0; border:1px solid var(--border); border-radius:6px; background:#fff; font-size:14px; cursor:pointer; }
+  .stepper-btn { width:44px; height:38px; flex-shrink:0; border:1px solid var(--border); border-radius:6px; background:#fff; font-size:14px; cursor:pointer; touch-action:manipulation; }
   .date-picker-wrap { position:relative; }
   .dp-popup { position:absolute; z-index:20; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.15); padding:8px; width:230px; top:100%; left:0; margin-top:4px; }
   .dp-header { display:flex; justify-content:space-between; align-items:center; font-size:13px; margin-bottom:6px; }
@@ -210,6 +214,10 @@
   </div>
 
   <div id="tab-accounts" style="display:none">
+    <div class="sticky-actions-bar" style="background:var(--card); border-radius:8px; padding:10px 14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-size:12px; color:#666; text-transform:uppercase; letter-spacing:.3px;">Totaal saldo</span>
+      <span id="accounts-total-amount" style="font-weight:bold; font-size:16px;">€ 0,00</span>
+    </div>
     <button class="btn-save" id="add-account-btn" style="width:100%; padding:10px; margin-bottom:10px;">+ Rekening toevoegen</button>
     <div id="accounts-list"><div class="empty">Nog geen rekeningen.</div></div>
   </div>
@@ -665,7 +673,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.17';
+const APP_VERSION = 'v3.19';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -710,6 +718,12 @@ document.querySelectorAll('nav button').forEach(btn => {
 
 function formatEuro(n) {
   return '€ ' + Number(n).toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+// Budget-tab toont bedragen op hele euro's (geen centen) — alleen voor display, onderliggende
+// transacties/berekeningen blijven op de cent.
+function formatEuroWhole(n) {
+  return '€ ' + Math.round(Number(n)).toLocaleString('nl-NL', {minimumFractionDigits:0, maximumFractionDigits:0});
 }
 
 function formatDateNL(dateStr) {
@@ -966,14 +980,23 @@ let mainSortDesc = false;
 let budgetViewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let newMonthPromptShownFor = null;
 const assignSaveTimers = {};
+// Zolang een categorie een niet-opgeslagen wijziging heeft, houdt leafNumbers() de lokale waarde
+// aan i.p.v. de laatst-opgehaalde DB-waarde. Dit voorkomt dat een loadBudget()-refresh die start
+// vóór deze wijziging is opgeslagen, de net getikte stap weer overschrijft/laat "verdwijnen".
+const pendingAssignValues = {};
 function scheduleAssignSave(catId, value) {
-  if (assignSaveTimers[catId]) clearTimeout(assignSaveTimers[catId]);
-  assignSaveTimers[catId] = setTimeout(async () => {
-    delete assignSaveTimers[catId];
+  const key = String(catId);
+  pendingAssignValues[key] = value;
+  if (assignSaveTimers[key]) clearTimeout(assignSaveTimers[key]);
+  assignSaveTimers[key] = setTimeout(async () => {
+    delete assignSaveTimers[key];
     const { monthStr: m } = monthBounds(budgetViewMonth);
     const { error } = await sb.from('budget_months')
       .upsert({ category_id: catId, month: m, assigned: value }, { onConflict: 'category_id,month' });
     if (error) { console.error(error); alert('Opslaan van toewijzing mislukt.'); }
+    // Alleen opruimen als dit nog steeds de laatste/actuele waarde is (er kan tijdens het opslaan
+    // alweer een nieuwe klik zijn gestart, die zijn eigen timer + pending-waarde heeft klaargezet).
+    if (pendingAssignValues[key] === value) delete pendingAssignValues[key];
     loadBudget();
   }, 500);
 }
@@ -1417,14 +1440,14 @@ async function loadBudget() {
     .reduce((s, r) => s + Number(r.assigned), 0);
   const rta = totalStartingBalance + totalUnassigned - totalAssignedEver;
   const rtaEl = document.getElementById('rta-amount');
-  rtaEl.textContent = formatEuro(rta);
+  rtaEl.textContent = formatEuroWhole(rta);
   rtaEl.className = 'amount ' + (rta >= 0 ? 'positive' : 'negative');
 
   const { data: allAccountsForTotal } = await sb.from('accounts').select('id, starting_balance');
   const { data: allTxnsForTotal } = await sb.from('transactions').select('amount');
   let combinedTotal = (allAccountsForTotal || []).reduce((s, a) => s + Number(a.starting_balance), 0);
   combinedTotal += (allTxnsForTotal || []).reduce((s, t) => s + Number(t.amount), 0);
-  document.getElementById('combined-total').textContent = formatEuro(combinedTotal);
+  document.getElementById('combined-total').textContent = formatEuroWhole(combinedTotal);
 
   await updateMoneyAge();
 
@@ -1446,8 +1469,17 @@ async function loadBudget() {
   cats.forEach(c => { const k = c.parent_id || 'root'; (byParent[k] = byParent[k] || []).push(c); });
   Object.values(byParent).forEach(arr => arr.sort((a,b) => a.sort_order - b.sort_order));
 
+  // Voor Inkomsten is "resterend" niet goed/fout op dezelfde manier als bij Uitgaven/Reserveringen:
+  // negatief (meer binnengekomen dan begroot) is juist goed nieuws -> groen; positief (nog niet
+  // (volledig) binnen) is gewoon de normale, verwachte staat -> neutraal, geen rood.
+  function resterendClass(resterend, type) {
+    if (type === 'income') return resterend < 0 ? 'positive' : 'neutral';
+    return resterend >= 0 ? 'positive' : 'negative';
+  }
+
   function leafNumbers(catId, type) {
-    const begroot = assignedMap[catId] || 0;
+    const pendingKey = String(catId);
+    const begroot = pendingAssignValues.hasOwnProperty(pendingKey) ? pendingAssignValues[pendingKey] : (assignedMap[catId] || 0);
     const gerealiseerd = spentMap[catId] || 0;
     if (type === 'income') {
       // Inkomen is NIET cumulatief: iedere maand begint opnieuw (verwacht deze maand - ontvangen deze maand)
@@ -1467,12 +1499,12 @@ async function loadBudget() {
     }, { begroot: 0, gerealiseerd: 0, resterend: 0 });
   }
 
-  function numbersBlock(n) {
+  function numbersBlock(n, type) {
     return `
       <div class="cat-numbers">
-        <div class="num-col"><div class="num-label">Begroot</div><div class="num-value">${formatEuro(n.begroot)}</div></div>
-        <div class="num-col"><div class="num-label">Gerealiseerd</div><div class="num-value">${formatEuro(n.gerealiseerd)}</div></div>
-        <div class="num-col"><div class="num-label">Resterend</div><div class="num-value ${n.resterend >= 0 ? 'positive' : 'negative'}">${formatEuro(n.resterend)}</div></div>
+        <div class="num-col"><div class="num-label">Begroot</div><div class="num-value">${formatEuroWhole(n.begroot)}</div></div>
+        <div class="num-col"><div class="num-label">Gerealiseerd</div><div class="num-value">${formatEuroWhole(n.gerealiseerd)}</div></div>
+        <div class="num-col"><div class="num-label">Resterend</div><div class="num-value ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</div></div>
       </div>`;
   }
 
@@ -1481,11 +1513,11 @@ async function loadBudget() {
       <div class="leaf-begroot-row">
         <span class="leaf-stat-label">Begroot</span>
         <button type="button" class="stepper-btn assign-minus" data-cat="${catId}" style="width:32px; height:30px; font-size:12px; padding:0;">−</button>
-        <input class="assign" data-cat="${catId}" type="number" step="50" value="${n.begroot.toFixed(2)}">
+        <input class="assign" data-cat="${catId}" type="number" step="1" value="${Math.round(n.begroot)}">
         <button type="button" class="stepper-btn assign-plus" data-cat="${catId}" style="width:32px; height:30px; font-size:12px; padding:0;">+</button>
       </div>
       <div class="leaf-stats-row">
-        <div class="leaf-stat"><span class="leaf-stat-label">Gerealiseerd</span> <span class="leaf-stat-value">${formatEuro(n.gerealiseerd)}</span></div>
+        <div class="leaf-stat"><span class="leaf-stat-label">Gerealiseerd</span> <span class="leaf-stat-value">${formatEuroWhole(n.gerealiseerd)}</span></div>
       </div>`;
   }
 
@@ -1507,7 +1539,7 @@ async function loadBudget() {
         <h3 style="cursor:pointer;" data-budget-toggle="${c.id}">
           <span>${isCollapsed ? '▸' : '▾'} ${c.name}</span>
         </h3>
-        ${numbersBlock(sums)}`;
+        ${numbersBlock(sums, type)}`;
       const body = isCollapsed ? '' : children.map(ch => renderNode(ch, type, depth + 1)).join('');
       return `<div class="group budget-group ${depth === 0 ? 'hoofdcat-group' : ''}">${header}${body}</div>`;
     }
@@ -1519,12 +1551,12 @@ async function loadBudget() {
       <div class="cat-row">
         <div class="cat-row-summary" data-expand-toggle="${c.id}">
           <div class="name">${isExpanded ? '▾' : '▸'} ${c.name}</div>
-          <div class="resterend-inline ${n.resterend >= 0 ? 'positive' : 'negative'}">${formatEuro(n.resterend)}</div>
+          <div class="resterend-inline ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</div>
         </div>
         ${progressBar(n)}
         <div class="cat-row-detail" style="${isExpanded ? '' : 'display:none;'}">
           ${leafNumbersBlock(n, c.id)}
-          ${expectedDue !== 0 ? `<div class="expected">Nog te verwachten deze maand: ${formatEuro(resterendMetVerwacht)}</div>` : ''}
+          ${expectedDue !== 0 ? `<div class="expected">Nog te verwachten deze maand: ${formatEuroWhole(resterendMetVerwacht)}</div>` : ''}
         </div>
       </div>`;
   }
@@ -1544,9 +1576,9 @@ async function loadBudget() {
     totalEl.innerHTML = rootsForType.length ? `
       <div style="font-weight:bold; margin-bottom:6px;">Totaal ${totalLabel}</div>
       <div class="cat-numbers">
-        <div class="num-col"><div class="num-label">Begroot</div><div class="num-value">${formatEuro(grandTotal.begroot)}</div></div>
-        <div class="num-col"><div class="num-label">Gerealiseerd</div><div class="num-value">${formatEuro(grandTotal.gerealiseerd)}</div></div>
-        <div class="num-col"><div class="num-label">${lastLabel}</div><div class="num-value ${grandTotal.resterend >= 0 ? 'positive' : 'negative'}">${formatEuro(grandTotal.resterend)}</div></div>
+        <div class="num-col"><div class="num-label">Begroot</div><div class="num-value">${formatEuroWhole(grandTotal.begroot)}</div></div>
+        <div class="num-col"><div class="num-label">Gerealiseerd</div><div class="num-value">${formatEuroWhole(grandTotal.gerealiseerd)}</div></div>
+        <div class="num-col"><div class="num-label">${lastLabel}</div><div class="num-value ${resterendClass(grandTotal.resterend, type)}">${formatEuroWhole(grandTotal.resterend)}</div></div>
       </div>` : '';
   }
 
@@ -1558,15 +1590,17 @@ async function loadBudget() {
     container.querySelectorAll('.assign-minus').forEach(btn => {
       btn.addEventListener('click', () => {
         const inp = container.querySelector(`.assign[data-cat="${btn.dataset.cat}"]`);
-        inp.value = (parseFloat(inp.value) - 50).toFixed(2);
-        scheduleAssignSave(btn.dataset.cat, parseFloat(inp.value));
+        const newVal = Math.round(parseFloat(inp.value) - 50);
+        inp.value = newVal;
+        scheduleAssignSave(btn.dataset.cat, newVal);
       });
     });
     container.querySelectorAll('.assign-plus').forEach(btn => {
       btn.addEventListener('click', () => {
         const inp = container.querySelector(`.assign[data-cat="${btn.dataset.cat}"]`);
-        inp.value = (parseFloat(inp.value) + 50).toFixed(2);
-        scheduleAssignSave(btn.dataset.cat, parseFloat(inp.value));
+        const newVal = Math.round(parseFloat(inp.value) + 50);
+        inp.value = newVal;
+        scheduleAssignSave(btn.dataset.cat, newVal);
       });
     });
     container.querySelectorAll('input.assign').forEach(inp => {
@@ -1589,7 +1623,8 @@ async function loadBudget() {
     container.querySelectorAll('input.assign').forEach(inp => {
       inp.addEventListener('change', () => {
         const catId = inp.dataset.cat;
-        const value = parseFloat(inp.value) || 0;
+        const value = Math.round(parseFloat(inp.value)) || 0;
+        inp.value = value;
         scheduleAssignSave(catId, value);
       });
     });
@@ -1772,10 +1807,12 @@ document.getElementById('zak-add-txn-btn').addEventListener('click', () => openZ
 // ---- Transactions list with click-to-detail ----
 async function loadTransactions() {
   // Volledige, chronologische ledger per rekening ophalen om een kloppend historisch saldo te kunnen tonen
-  const { data: accounts } = await sb.from('accounts').select('id, name, bank, starting_balance');
+  const { data: accounts } = await sb.from('accounts').select('id, name, bank, starting_balance, scope');
   const startingByAccount = {};
   const accountMeta = {};
   (accounts || []).forEach(a => { startingByAccount[a.id] = Number(a.starting_balance); accountMeta[a.id] = a; });
+  // Deze tab toont alleen privé — zakelijke transacties horen in de Zakelijk-tab, niet hier tussendoor.
+  const priveAccountIds = (accounts || []).filter(a => a.scope !== 'zakelijk').map(a => a.id);
 
   const { data: allTxnsWithAmount, error } = await sb.from('transactions').select('id, account_id, amount, date').order('date', { ascending: true }).order('id', { ascending: true });
   if (error) { console.error(error); return; }
@@ -1792,7 +1829,12 @@ async function loadTransactions() {
     .select('id, date, payee, notitie, amount, cleared, account_id, link_type, categories(name)')
     .order('date', { ascending: false })
     .order('id', { ascending: false });
-  if (transactionAccountFilter.size > 0) query = query.in('account_id', [...transactionAccountFilter]);
+  const scopedFilterIds = transactionAccountFilter.size > 0
+    ? [...transactionAccountFilter].filter(id => priveAccountIds.includes(id))
+    : priveAccountIds;
+  const el = document.getElementById('transactions-list');
+  if (scopedFilterIds.length === 0) { el.innerHTML = '<div class="empty">Geen transacties gevonden.</div>'; return; }
+  query = query.in('account_id', scopedFilterIds);
   const searchTerm = mainTxnSearch.trim();
   if (searchTerm) {
     const escaped = searchTerm.replace(/[%,]/g, '');
@@ -1802,7 +1844,6 @@ async function loadTransactions() {
   }
   const { data, error: dErr } = await query;
   if (dErr) { console.error(dErr); return; }
-  const el = document.getElementById('transactions-list');
   if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Geen transacties gevonden.</div>'; return; }
   let chronological = [...data].reverse(); // register-stijl: oud boven, nieuw onder
   if (mainSortDesc) chronological = chronological.reverse();
@@ -1815,6 +1856,16 @@ async function loadTransactions() {
   const rows = sortUnclearedToBottom(rowsChrono);
   el.innerHTML = renderTransactionRows(rows, { showAccount: true, context: 'main' });
   wireTransactionRowEvents(el, 'main');
+}
+
+// Scrollt naar en highlight't kort een nieuw toegevoegde transactie op zijn werkelijke, gesorteerde
+// plek — i.p.v. de "ongecleared altijd onderaan"-sorteerregel aan te passen (die blijft ongewijzigd).
+function scrollToAndHighlightTxn(txnId) {
+  const row = document.querySelector(`#transactions-list .txn-row[data-txn="${txnId}"]`);
+  if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.classList.add('flash-new');
+  setTimeout(() => row.classList.remove('flash-new'), 1600);
 }
 
 document.getElementById('main-txn-search').addEventListener('input', (e) => {
@@ -2077,6 +2128,7 @@ document.getElementById('txn-detail-save-btn').addEventListener('click', async (
   if (!account_id || isNaN(amount) || !date) { alert('Vul rekening, bedrag en datum in.'); return; }
 
   let txnId = currentTxnId;
+  const isNewTxn = !txnId;
   if (txnId) {
     const { error } = await sb.from('transactions').update({ account_id, category_id, payee, amount, date, cleared, notitie }).eq('id', txnId);
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
@@ -2122,7 +2174,12 @@ document.getElementById('txn-detail-save-btn').addEventListener('click', async (
   document.getElementById('txn-detail-bg').classList.remove('open');
   loadBudget();
   loadAccounts();
-  loadTransactions();
+  if (isNewTxn) {
+    await loadTransactions();
+    if (activeTab === 'transactions') scrollToAndHighlightTxn(txnId);
+  } else {
+    loadTransactions();
+  }
   if (activeTab === 'zakelijk') loadZakelijk();
   if (activeTab === 'possessions') loadPossessions();
 });
@@ -2252,7 +2309,12 @@ async function loadAccounts() {
   const { data, error } = await sb.from('accounts').select('*').order('name');
   if (error) { console.error(error); return; }
   const el = document.getElementById('accounts-list');
-  if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Nog geen rekeningen.</div>'; return; }
+  const totalEl = document.getElementById('accounts-total-amount');
+  if (!data || data.length === 0) {
+    el.innerHTML = '<div class="empty">Nog geen rekeningen.</div>';
+    if (totalEl) totalEl.textContent = formatEuro(0);
+    return;
+  }
 
   const { data: allTxns } = await sb.from('transactions').select('account_id, amount');
   const txnSumByAccount = {};
@@ -2280,6 +2342,7 @@ async function loadAccounts() {
   if (zakAccs.length > 0) html += zakAccs.map(accountRow).join('') + subtotalRow('Subtotaal zakelijk', zakAccs);
   html += `<div class="acc-row" style="font-weight:bold; background:#1b5e20; color:#fff;"><div>Totaal</div><div>${formatEuro(grandTotal)}</div></div>`;
   el.innerHTML = html;
+  if (totalEl) totalEl.textContent = formatEuro(grandTotal);
 
   el.querySelectorAll('.acc-row[data-account]').forEach(row => {
     row.addEventListener('click', () => openAccountDetail(row.dataset.account));
