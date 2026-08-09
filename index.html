@@ -138,6 +138,11 @@
   .stepper-btn { width:44px; height:38px; flex-shrink:0; border:1px solid var(--border); border-radius:6px; background:#fff; font-size:14px; cursor:pointer; touch-action:manipulation; }
   .date-picker-wrap { position:relative; }
   .dp-popup { position:absolute; z-index:20; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.15); padding:8px; width:230px; top:100%; left:0; margin-top:4px; }
+  .cat-popup { position:absolute; z-index:20; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.15); top:100%; left:0; right:0; margin-top:4px; max-height:260px; overflow-y:auto; }
+  .cat-popup-option { padding:10px 12px; cursor:pointer; border-bottom:1px solid #f0f0f0; touch-action:manipulation; }
+  .cat-popup-option:last-child { border-bottom:none; }
+  .cat-popup-option.cat-popup-empty { color:#888; font-style:italic; }
+  .cat-popup-option.cat-popup-none { padding:12px; text-align:center; color:#888; font-style:italic; cursor:default; }
   .dp-header { display:flex; justify-content:space-between; align-items:center; font-size:13px; margin-bottom:6px; }
   .dp-nav { border:none; background:none; font-size:16px; cursor:pointer; padding:2px 8px; }
   .dp-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center; }
@@ -554,8 +559,10 @@
     <label>Payee</label>
     <input type="text" id="txn-detail-payee" list="payee-datalist">
     <label>Categorie</label>
-    <input type="text" id="txn-detail-category-search" list="txn-detail-category-datalist" placeholder="Typ om te zoeken, of laat leeg voor Ready to Assign">
-    <datalist id="txn-detail-category-datalist"></datalist>
+    <div class="cat-picker-wrap" style="position:relative;">
+      <input type="text" id="txn-detail-category-search" autocomplete="off" placeholder="Typ om te zoeken, of laat leeg voor Ready to Assign">
+      <div class="cat-popup" id="txn-detail-category-popup" style="display:none;"></div>
+    </div>
     <label>Bedrag</label>
     <div class="amount-type-toggle">
       <button type="button" id="txn-detail-type-expense" class="active-expense">Uitgave</button>
@@ -673,7 +680,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.19';
+const APP_VERSION = 'v3.20';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -1903,6 +1910,7 @@ document.getElementById('zak-txn-type-expense').addEventListener('click', () => 
 document.getElementById('zak-txn-type-income').addEventListener('click', () => setAmountType('zak-txn', 'income'));
 
 let txnDetailCatLabelToId = {};
+let txnDetailLeafOptions = [];
 let stagedReceiptFiles = [];
 let existingReceipts = [];
 let stagedAankoopFiles = [];
@@ -1910,9 +1918,9 @@ let existingPossession = null;
 
 async function refreshTxnDetailCategories(scope, currentCategoryId) {
   const orderedLeaves = await buildLeafCategoryOptions(scope);
+  txnDetailLeafOptions = orderedLeaves;
   txnDetailCatLabelToId = {};
   orderedLeaves.forEach(l => txnDetailCatLabelToId[l.label] = l.id);
-  document.getElementById('txn-detail-category-datalist').innerHTML = orderedLeaves.map(l => `<option value="${l.label}">`).join('');
   if (currentCategoryId) {
     const match = orderedLeaves.find(l => l.id === currentCategoryId);
     document.getElementById('txn-detail-category-search').value = match ? match.label : '';
@@ -1920,6 +1928,40 @@ async function refreshTxnDetailCategories(scope, currentCategoryId) {
     document.getElementById('txn-detail-category-search').value = '';
   }
 }
+
+function renderCatPopup(filterText) {
+  const popup = document.getElementById('txn-detail-category-popup');
+  const term = (filterText || '').trim().toLowerCase();
+  const matches = term ? txnDetailLeafOptions.filter(l => l.label.toLowerCase().includes(term)) : txnDetailLeafOptions;
+  let html = `<div class="cat-popup-option cat-popup-empty" data-label="">(geen categorie — Ready to Assign)</div>`;
+  html += matches.length
+    ? matches.map(l => `<div class="cat-popup-option" data-label="${l.label.replace(/"/g, '&quot;')}">${l.label}</div>`).join('')
+    : `<div class="cat-popup-none">Geen categorie gevonden</div>`;
+  popup.innerHTML = html;
+  popup.style.display = 'block';
+  popup.querySelectorAll('.cat-popup-option[data-label]').forEach(opt => {
+    // mousedown (i.p.v. click) vuurt vóór het blur-event van het invoerveld, anders sluit de
+    // popup zich al voordat de tik/klik als selectie wordt geregistreerd.
+    opt.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('txn-detail-category-search');
+      input.value = opt.getAttribute('data-label');
+      popup.style.display = 'none';
+    });
+  });
+}
+
+const txnDetailCategoryInput = () => document.getElementById('txn-detail-category-search');
+(function () {
+  const inp = txnDetailCategoryInput();
+  const popup = document.getElementById('txn-detail-category-popup');
+  inp.addEventListener('focus', function () {
+    this.select();
+    renderCatPopup('');
+  });
+  inp.addEventListener('input', function () { renderCatPopup(this.value); });
+  inp.addEventListener('blur', () => { setTimeout(() => { popup.style.display = 'none'; }, 150); });
+})();
 
 function renderReceiptPreview() {
   const el = document.getElementById('receipt-photos');
