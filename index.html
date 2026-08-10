@@ -129,6 +129,7 @@
   .dash-bar-fill { height:100%; background:var(--red); border-radius:4px; }
   .dash-bar-value { width:80px; flex-shrink:0; text-align:right; font-size:12px; font-weight:bold; }
   .select-toggle-btn { font-size:12px; color:var(--green); background:none; border:1px solid var(--green); border-radius:6px; padding:4px 10px; cursor:pointer; }
+  .select-toggle-btn.active { background:var(--green); color:#fff; }
   .amount-type-toggle { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-top:2px; }
   .amount-type-toggle button { flex:1; padding:8px; border:none; background:#fff; font-size:14px; cursor:pointer; }
   .amount-type-toggle button.active-expense { background:var(--red); color:#fff; }
@@ -241,6 +242,12 @@
       </div>
       <div style="margin-bottom:6px;">
         <input type="text" id="main-txn-search" placeholder="Zoek op payee of omschrijving..." style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px;">
+      </div>
+      <div id="main-month-nav" style="display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:6px;">
+        <button id="main-month-prev" class="select-toggle-btn" style="padding:4px 12px; font-size:16px;">‹</button>
+        <div id="main-month-label" style="font-weight:bold; text-transform:capitalize; min-width:130px; text-align:center;"></div>
+        <button id="main-month-next" class="select-toggle-btn" style="padding:4px 12px; font-size:16px;">›</button>
+        <button id="main-uncleared-toggle" class="select-toggle-btn" title="Alle nog niet gecleared transacties, ongeacht maand">⏳ Ongecleared</button>
       </div>
     </div>
     <div id="account-filter-panel" style="display:none; background:var(--card); border-radius:8px; padding:10px; margin-bottom:8px;">
@@ -680,7 +687,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.20';
+const APP_VERSION = 'v3.21';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -1812,6 +1819,14 @@ document.getElementById('add-txn-btn').addEventListener('click', () => openTxnDe
 document.getElementById('zak-add-txn-btn').addEventListener('click', () => openZakTxnModal());
 
 // ---- Transactions list with click-to-detail ----
+let mainTxnViewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let mainUnclearedOnly = false;
+
+function updateMainMonthLabel() {
+  const label = document.getElementById('main-month-label');
+  if (label) label.textContent = mainTxnViewMonth.toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
+}
+
 async function loadTransactions() {
   // Volledige, chronologische ledger per rekening ophalen om een kloppend historisch saldo te kunnen tonen
   const { data: accounts } = await sb.from('accounts').select('id, name, bank, starting_balance, scope');
@@ -1821,15 +1836,21 @@ async function loadTransactions() {
   // Deze tab toont alleen privé — zakelijke transacties horen in de Zakelijk-tab, niet hier tussendoor.
   const priveAccountIds = (accounts || []).filter(a => a.scope !== 'zakelijk').map(a => a.id);
 
-  const { data: allTxnsWithAmount, error } = await sb.from('transactions').select('id, account_id, amount, date').order('date', { ascending: true }).order('id', { ascending: true });
+  const { data: allTxnsWithAmount, error } = await sb.from('transactions').select('id, account_id, amount, date, cleared').order('date', { ascending: true }).order('id', { ascending: true });
   if (error) { console.error(error); return; }
   const runningByAccount = {};
   const balanceAfter = {};
+  let unclearedCount = 0;
   (allTxnsWithAmount || []).forEach(t => {
     const running = (runningByAccount[t.account_id] !== undefined ? runningByAccount[t.account_id] : (startingByAccount[t.account_id] || 0)) + Number(t.amount);
     runningByAccount[t.account_id] = running;
     balanceAfter[t.id] = running;
+    if (priveAccountIds.includes(t.account_id) && !t.cleared) unclearedCount++;
   });
+
+  const unclearedBtn = document.getElementById('main-uncleared-toggle');
+  unclearedBtn.textContent = unclearedCount > 0 ? `⏳ Ongecleared (${unclearedCount})` : '⏳ Ongecleared';
+  unclearedBtn.classList.toggle('active', mainUnclearedOnly);
 
   let query = sb
     .from('transactions')
@@ -1843,11 +1864,23 @@ async function loadTransactions() {
   if (scopedFilterIds.length === 0) { el.innerHTML = '<div class="empty">Geen transacties gevonden.</div>'; return; }
   query = query.in('account_id', scopedFilterIds);
   const searchTerm = mainTxnSearch.trim();
+  const monthNav = document.getElementById('main-month-nav');
   if (searchTerm) {
+    // Zoeken doorzoekt bewust de volledige historie, ongeacht maand — maandnavigatie is dan niet van
+    // toepassing en verbergt zich; zodra het zoekveld leeg is kom je terug in de maand waar je was.
+    monthNav.style.display = 'none';
     const escaped = searchTerm.replace(/[%,]/g, '');
-    query = query.or(`payee.ilike.%${escaped}%,notitie.ilike.%${escaped}%`);
+    query = query.or(`payee.ilike.%${escaped}%,notitie.ilike.%${escaped}%`).limit(50);
   } else {
-    query = query.limit(50);
+    monthNav.style.display = 'flex';
+    updateMainMonthLabel();
+    if (mainUnclearedOnly) {
+      // Escape voor oude, nog niet-gecleared transacties: ongeacht maand, wél nog netjes begrensd.
+      query = query.eq('cleared', false).limit(200);
+    } else {
+      const { startStr, endStr } = monthBounds(mainTxnViewMonth);
+      query = query.gte('date', startStr).lt('date', endStr).limit(500);
+    }
   }
   const { data, error: dErr } = await query;
   if (dErr) { console.error(dErr); return; }
@@ -1864,6 +1897,21 @@ async function loadTransactions() {
   el.innerHTML = renderTransactionRows(rows, { showAccount: true, context: 'main' });
   wireTransactionRowEvents(el, 'main');
 }
+
+document.getElementById('main-month-prev').addEventListener('click', () => {
+  mainUnclearedOnly = false;
+  mainTxnViewMonth = new Date(mainTxnViewMonth.getFullYear(), mainTxnViewMonth.getMonth() - 1, 1);
+  loadTransactions();
+});
+document.getElementById('main-month-next').addEventListener('click', () => {
+  mainUnclearedOnly = false;
+  mainTxnViewMonth = new Date(mainTxnViewMonth.getFullYear(), mainTxnViewMonth.getMonth() + 1, 1);
+  loadTransactions();
+});
+document.getElementById('main-uncleared-toggle').addEventListener('click', () => {
+  mainUnclearedOnly = !mainUnclearedOnly;
+  loadTransactions();
+});
 
 // Scrollt naar en highlight't kort een nieuw toegevoegde transactie op zijn werkelijke, gesorteerde
 // plek — i.p.v. de "ongecleared altijd onderaan"-sorteerregel aan te passen (die blijft ongewijzigd).
