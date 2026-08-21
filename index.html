@@ -319,6 +319,7 @@
         <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
           <button class="select-toggle-btn" id="zak-select-toggle">Selecteren</button>
           <button class="select-toggle-btn" id="zak-add-txn-btn">+ Nieuwe transactie</button>
+          <button class="select-toggle-btn" id="zak-add-transfer-btn">⇄ Overschrijving</button>
           <button class="select-toggle-btn" id="zak-account-filter-toggle">Filter op rekening</button>
           <button class="select-toggle-btn" id="zak-sort-toggle" title="Sorteervolgorde omdraaien">↑ Nieuwste eerst</button>
         </div>
@@ -708,7 +709,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.23';
+const APP_VERSION = 'v3.24';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -2745,6 +2746,7 @@ document.getElementById('account-cancel').addEventListener('click', () => {
 
 // ---- Overschrijving tussen rekeningen ----
 document.getElementById('add-transfer-btn').addEventListener('click', openTransferModal);
+document.getElementById('zak-add-transfer-btn').addEventListener('click', openTransferModal);
 
 async function openTransferModal() {
   const { data: accounts } = await sb.from('accounts').select('id, name, scope').order('name');
