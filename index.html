@@ -50,6 +50,12 @@
   input, select, textarea { font-size:16px; }
   .modal .actions { display:flex; gap:8px; margin-top:16px; }
   .modal .actions button { flex:1; padding:10px; border:none; border-radius:6px; font-size:14px; }
+  .split-row { display:flex; gap:6px; align-items:center; margin-top:6px; }
+  .split-row select { flex:2; min-width:0; padding:6px; border:1px solid var(--border); border-radius:4px; }
+  .split-row input.split-amount { flex:1; min-width:0; padding:6px; border:1px solid var(--border); border-radius:4px; text-align:right; }
+  .split-row button.split-remove { flex:0 0 auto; background:none; border:none; color:var(--red); font-size:16px; padding:0 4px; cursor:pointer; }
+  #txn-detail-split-remaining.zero { color:var(--green); }
+  #txn-detail-split-remaining.nonzero { color:var(--red); }
   .btn-save { background:var(--green); color:#fff; }
   .btn-cancel { background:#eee; }
   .empty { text-align:center; color:#999; padding:30px; font-size:13px; }
@@ -237,7 +243,7 @@
       <div style="text-align:left; margin-bottom:6px; display:flex; gap:8px; align-items:center;">
         <button class="select-toggle-btn" id="main-select-toggle">Selecteren</button>
         <button class="select-toggle-btn" id="account-filter-toggle">Filter op rekening</button>
-        <button class="select-toggle-btn" id="main-sort-toggle" title="Sorteervolgorde omdraaien">↓ Oudste eerst</button>
+        <button class="select-toggle-btn" id="main-sort-toggle" title="Sorteervolgorde omdraaien">↑ Nieuwste eerst</button>
         <button class="select-toggle-btn" id="recurring-overview-btn">Toekomstige transacties</button>
       </div>
       <div style="margin-bottom:6px;">
@@ -297,7 +303,7 @@
 
   <div id="tab-zakelijk" style="display:none">
     <div class="rta" id="zak-resultaat">
-      <div style="font-size:12px; color:#666;">Resultaat deze maand</div>
+      <div style="font-size:12px; color:#666;">Resultaat</div>
       <div class="amount" id="zak-resultaat-amount">€ 0,00</div>
       <div style="font-size:11px; color:#888; margin-top:4px;">
         Inkomsten: <span id="zak-inkomsten">€ 0,00</span> · Uitgaven: <span id="zak-uitgaven">€ 0,00</span>
@@ -314,10 +320,15 @@
           <button class="select-toggle-btn" id="zak-select-toggle">Selecteren</button>
           <button class="select-toggle-btn" id="zak-add-txn-btn">+ Nieuwe transactie</button>
           <button class="select-toggle-btn" id="zak-account-filter-toggle">Filter op rekening</button>
-          <button class="select-toggle-btn" id="zak-sort-toggle" title="Sorteervolgorde omdraaien">↓ Oudste eerst</button>
+          <button class="select-toggle-btn" id="zak-sort-toggle" title="Sorteervolgorde omdraaien">↑ Nieuwste eerst</button>
         </div>
         <div style="margin-bottom:6px;">
           <input type="text" id="zak-txn-search" placeholder="Zoek op payee of omschrijving..." style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; box-sizing:border-box;">
+        </div>
+        <div id="zak-month-nav" style="display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:6px;">
+          <button id="zak-month-prev" class="select-toggle-btn" style="padding:4px 12px; font-size:16px;">‹</button>
+          <div id="zak-month-label" style="font-weight:bold; text-transform:capitalize; min-width:130px; text-align:center;"></div>
+          <button id="zak-month-next" class="select-toggle-btn" style="padding:4px 12px; font-size:16px;">›</button>
         </div>
       </div>
       <div id="zak-account-filter-panel" style="display:none; background:var(--card); border-radius:8px; padding:10px; margin-bottom:8px;">
@@ -566,9 +577,19 @@
     <label>Payee</label>
     <input type="text" id="txn-detail-payee" list="payee-datalist">
     <label>Categorie</label>
-    <div class="cat-picker-wrap" style="position:relative;">
+    <div class="cat-picker-wrap" style="position:relative;" id="txn-detail-category-single-wrap">
       <input type="text" id="txn-detail-category-search" autocomplete="off" placeholder="Typ om te zoeken, of laat leeg voor Ready to Assign">
       <div class="cat-popup" id="txn-detail-category-popup" style="display:none;"></div>
+      <button type="button" id="txn-detail-split-toggle-on" style="margin-top:6px; background:none; border:none; color:var(--green); font-size:12px; padding:0; cursor:pointer;">+ Splitsen</button>
+    </div>
+    <div id="txn-detail-split-wrap" style="display:none;">
+      <div id="txn-detail-split-rows"></div>
+      <button type="button" id="txn-detail-split-add-row" style="margin-top:4px; background:none; border:none; color:var(--green); font-size:12px; padding:0; cursor:pointer;">+ Categorie toevoegen</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; font-size:12px;">
+        <span>Nog te verdelen</span>
+        <span id="txn-detail-split-remaining" style="font-weight:bold;">€ 0,00</span>
+      </div>
+      <button type="button" id="txn-detail-split-toggle-off" style="margin-top:4px; background:none; border:none; color:#888; font-size:12px; padding:0; cursor:pointer;">− Splitsing annuleren</button>
     </div>
     <label>Bedrag</label>
     <div class="amount-type-toggle">
@@ -687,7 +708,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.21';
+const APP_VERSION = 'v3.23';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -863,9 +884,17 @@ async function loadDashboard() {
 
   const months = [...new Set(rows.map(t => t.date.slice(0, 7)))].sort();
 
+  // Gesplitste transacties: de hoofdrij heeft category_id = null (die zou anders onterecht als
+  // "Ongecategoriseerd" meetellen); in plaats daarvan boeken we elke split-rij op zijn eigen categorie.
+  const splitTxnDates = {};
+  rows.forEach(t => { splitTxnDates[t.id] = t.date; });
+  const { data: dashSplitRows } = await sb.from('transaction_splits').select('transaction_id, category_id, amount');
+  const splitParentIds = new Set((dashSplitRows || []).map(r => r.transaction_id));
+
   const monthlyIncome = {}, monthlyExpense = {};
   const catTotals = {};
   rows.forEach(t => {
+    if (splitParentIds.has(t.id)) return; // deze wordt hieronder via zijn split-rijen meegeteld
     const m = t.date.slice(0, 7);
     const amt = Number(t.amount);
     if (amt >= 0) {
@@ -873,6 +902,19 @@ async function loadDashboard() {
     } else {
       monthlyExpense[m] = (monthlyExpense[m] || 0) + amt;
       const rootName = rootCategoryName(t.category_id);
+      catTotals[rootName] = (catTotals[rootName] || 0) + amt;
+    }
+  });
+  (dashSplitRows || []).forEach(r => {
+    const txnDate = splitTxnDates[r.transaction_id];
+    if (!txnDate) return; // hoort niet bij een privé-transactie in deze set
+    const m = txnDate.slice(0, 7);
+    const amt = Number(r.amount);
+    if (amt >= 0) {
+      monthlyIncome[m] = (monthlyIncome[m] || 0) + amt;
+    } else {
+      monthlyExpense[m] = (monthlyExpense[m] || 0) + amt;
+      const rootName = rootCategoryName(r.category_id);
       catTotals[rootName] = (catTotals[rootName] || 0) + amt;
     }
   });
@@ -990,7 +1032,7 @@ const collapsedCatIds = new Set();
 const expandedBudgetRowIds = new Set();
 const transactionAccountFilter = new Set();
 let mainTxnSearch = '';
-let mainSortDesc = false;
+let mainSortDesc = true;
 let budgetViewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let newMonthPromptShownFor = null;
 const assignSaveTimers = {};
@@ -1178,15 +1220,19 @@ function renderTransactionRows(rows, opts) {
 
 function renderOneTxnRow(t, opts, bulkOn) {
   const linkIcon = t.link_type === 'transfer' ? '⇄ ' : (t.link_type === 'offset' ? '🔗 ' : '');
+  const splitIcon = t.splitCount ? '🔀 ' : '';
   const bankLogo = opts.showAccount ? `<div style="width:22px; height:22px; flex-shrink:0; margin-right:6px;">${t.bank ? bankLogoHtml(t.bank) : ''}</div>` : '';
   const isSelected = selectedTxnState[opts.context].has(String(t.id));
+  const categorySubtitle = t.splitCount
+    ? `Gesplitst (${t.splitCount} categorieën)`
+    : (t.categoryName || (t.link_type === 'transfer' ? '' : 'Ready to Assign'));
   return `
     <div class="txn-row" data-txn="${t.id}">
       ${bulkOn ? `<input type="checkbox" class="txn-select-cb" data-txn="${t.id}" ${isSelected ? 'checked' : ''}>` : ''}
       ${bankLogo}
       <div style="flex:1; min-width:0;">
-        <div style="overflow-wrap:break-word;">${linkIcon}${t.payee || '(geen payee)'}</div>
-        <div style="font-size:11px; color:#888; overflow-wrap:break-word;">${opts.showAccount ? (t.accountName || '') + ' · ' : ''}${t.categoryName || (t.link_type === 'transfer' ? '' : 'Ready to Assign')}</div>
+        <div style="overflow-wrap:break-word;">${linkIcon}${splitIcon}${t.payee || '(geen payee)'}</div>
+        <div style="font-size:11px; color:#888; overflow-wrap:break-word;">${opts.showAccount ? (t.accountName || '') + ' · ' : ''}${categorySubtitle}</div>
       </div>
       <div style="text-align:right; flex-shrink:0; display:flex; align-items:center; gap:6px;">
         <div>
@@ -1417,6 +1463,13 @@ async function loadBudget() {
     .gte('date', startStr).lt('date', endStr);
   const spentMap = {};
   (spentRows || []).forEach(r => { if (r.category_id) spentMap[r.category_id] = (spentMap[r.category_id] || 0) + Number(r.amount); });
+  // Gesplitste transacties: de hoofdtransactie zelf heeft category_id = null (die valt hierboven al
+  // buiten de telling); in plaats daarvan telt elke split-rij mee onder zijn eigen categorie.
+  const { data: splitSpentRows } = await sb
+    .from('transaction_splits')
+    .select('category_id, amount, transactions!inner(date)')
+    .gte('transactions.date', startStr).lt('transactions.date', endStr);
+  (splitSpentRows || []).forEach(r => { if (r.category_id) spentMap[r.category_id] = (spentMap[r.category_id] || 0) + Number(r.amount); });
 
   // Cumulatief t/m de bekeken maand (voor Resterend — bouwt op over maanden heen, voor alle drie de typen)
   const { data: cumBudgetRows } = await sb
@@ -1432,6 +1485,11 @@ async function loadBudget() {
     .lt('date', endStr);
   const cumSpentMap = {};
   (cumSpentRows || []).forEach(r => { if (r.category_id) cumSpentMap[r.category_id] = (cumSpentMap[r.category_id] || 0) + Number(r.amount); });
+  const { data: cumSplitSpentRows } = await sb
+    .from('transaction_splits')
+    .select('category_id, amount, transactions!inner(date)')
+    .lt('transactions.date', endStr);
+  (cumSplitSpentRows || []).forEach(r => { if (r.category_id) cumSpentMap[r.category_id] = (cumSpentMap[r.category_id] || 0) + Number(r.amount); });
 
   const { data: recurringRows } = await sb
     .from('recurring_transactions')
@@ -1446,7 +1504,14 @@ async function loadBudget() {
   // is een verwacht bedrag (forward-looking target), geen echte oormerking van al beschikbaar geld.
   const { data: priveAccountsForRta } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
   const totalStartingBalance = (priveAccountsForRta || []).reduce((s, a) => s + Number(a.starting_balance), 0);
-  const { data: unassignedTxns } = await sb.from('transactions').select('amount, accounts!inner(scope)').is('category_id', null).eq('accounts.scope', 'prive');
+  // Gesplitste transacties hebben ook category_id = null, maar zijn NIET "unassigned" — hun bedrag is al
+  // volledig verdeeld over de split-categorieën hierboven. Zonder deze uitsluiting zou hun volle bedrag
+  // dubbel meetellen: één keer als "unassigned" hier, en nogmaals via de split-categorieën in spentMap.
+  const { data: splitTxnIdRows } = await sb.from('transaction_splits').select('transaction_id');
+  const splitTxnIds = [...new Set((splitTxnIdRows || []).map(r => r.transaction_id))];
+  let unassignedQuery = sb.from('transactions').select('amount, accounts!inner(scope)').is('category_id', null).eq('accounts.scope', 'prive');
+  if (splitTxnIds.length > 0) unassignedQuery = unassignedQuery.not('id', 'in', `(${splitTxnIds.join(',')})`);
+  const { data: unassignedTxns } = await unassignedQuery;
   const totalUnassigned = (unassignedTxns || []).reduce((s, r) => s + Number(r.amount), 0);
   const { data: allBudgetRows } = await sb.from('budget_months').select('category_id, assigned');
   const totalAssignedEver = (allBudgetRows || [])
@@ -1535,12 +1600,14 @@ async function loadBudget() {
       </div>`;
   }
 
-  function progressBar(n) {
+  function progressBar(n, type) {
     const target = Math.abs(n.begroot);
     const actual = Math.abs(n.gerealiseerd);
     const pct = target > 0 ? Math.min(100, (actual / target) * 100) : (actual > 0 ? 100 : 0);
     const over = target > 0 && actual > target;
-    const color = over ? 'var(--red)' : '#43a047';
+    // Voor Inkomsten is "over" (meer ontvangen dan begroot) juist goed nieuws -> groen, niet rood
+    // (dit was de enige plek die de v3.18-kleurfix nog miste — resterendClass() zelf was al goed).
+    const color = over && type !== 'income' ? 'var(--red)' : '#43a047';
     return `<div class="progress-bar-track"><div class="progress-bar-fill" style="width:${pct}%; background:${color};"></div></div>`;
   }
 
@@ -1567,7 +1634,7 @@ async function loadBudget() {
           <div class="name">${isExpanded ? '▾' : '▸'} ${c.name}</div>
           <div class="resterend-inline ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</div>
         </div>
-        ${progressBar(n)}
+        ${progressBar(n, type)}
         <div class="cat-row-detail" style="${isExpanded ? '' : 'display:none;'}">
           ${leafNumbersBlock(n, c.id)}
           ${expectedDue !== 0 ? `<div class="expected">Nog te verwachten deze maand: ${formatEuroWhole(resterendMetVerwacht)}</div>` : ''}
@@ -1885,13 +1952,18 @@ async function loadTransactions() {
   const { data, error: dErr } = await query;
   if (dErr) { console.error(dErr); return; }
   if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Geen transacties gevonden.</div>'; return; }
+
+  const { data: splitCountRows } = await sb.from('transaction_splits').select('transaction_id').in('transaction_id', data.map(t => t.id));
+  const splitCounts = {};
+  (splitCountRows || []).forEach(r => { splitCounts[r.transaction_id] = (splitCounts[r.transaction_id] || 0) + 1; });
+
   let chronological = [...data].reverse(); // register-stijl: oud boven, nieuw onder
   if (mainSortDesc) chronological = chronological.reverse();
   const rowsChrono = chronological.map(t => ({
     id: t.id, date: t.date, payee: t.payee, amount: Number(t.amount), cleared: t.cleared,
     categoryName: t.categories?.name, link_type: t.link_type,
     accountName: accountMeta[t.account_id]?.name, bank: accountMeta[t.account_id]?.bank,
-    balanceAfter: balanceAfter[t.id]
+    balanceAfter: balanceAfter[t.id], splitCount: splitCounts[t.id] || 0
   }));
   const rows = sortUnclearedToBottom(rowsChrono);
   el.innerHTML = renderTransactionRows(rows, { showAccount: true, context: 'main' });
@@ -2011,6 +2083,85 @@ const txnDetailCategoryInput = () => document.getElementById('txn-detail-categor
   inp.addEventListener('blur', () => { setTimeout(() => { popup.style.display = 'none'; }, 150); });
 })();
 
+// ---- Split-transacties: meerdere categorieën op één transactie ----
+// Herhalende transacties blijven bewust single-category (niet in scope); "ontkoppel splitsing"
+// (een reeds opgeslagen gesplitste transactie terugzetten naar 1 categorie) is een latere aanvulling —
+// vóór het opslaan kan een NIEUWE splitsing wel gewoon weer geannuleerd worden, dat is geen "ontkoppelen".
+let splitMode = false;
+let splitRows = []; // [{ category_id, amount }]
+let splitWasAlreadySaved = false; // true zodra dit een bestaande, al-opgeslagen splitsing is (dan geen "annuleren"-knop)
+
+function currentTxnTotalAbs() {
+  const raw = parseFloat(document.getElementById('txn-detail-amount').value);
+  return isNaN(raw) ? 0 : Math.abs(raw);
+}
+
+function updateSplitRemaining() {
+  const total = currentTxnTotalAbs();
+  const assigned = splitRows.reduce((s, r) => s + (isNaN(r.amount) ? 0 : r.amount), 0);
+  const remaining = Math.round((total - assigned) * 100) / 100;
+  const el = document.getElementById('txn-detail-split-remaining');
+  el.textContent = formatEuro(remaining);
+  el.className = Math.abs(remaining) < 0.005 ? 'zero' : 'nonzero';
+  return remaining;
+}
+
+function renderSplitRows() {
+  const wrap = document.getElementById('txn-detail-split-rows');
+  wrap.innerHTML = splitRows.map((row, idx) => `
+    <div class="split-row" data-idx="${idx}">
+      <select class="split-cat" data-idx="${idx}">
+        <option value="">(geen categorie)</option>
+        ${txnDetailLeafOptions.map(l => `<option value="${l.id}" ${String(row.category_id) === String(l.id) ? 'selected' : ''}>${l.label}</option>`).join('')}
+      </select>
+      <input type="number" step="0.01" class="split-amount" data-idx="${idx}" value="${row.amount || ''}">
+      <button type="button" class="split-remove" data-idx="${idx}">×</button>
+    </div>`).join('');
+  wrap.querySelectorAll('.split-cat').forEach(sel => {
+    sel.addEventListener('change', () => { splitRows[Number(sel.dataset.idx)].category_id = sel.value ? Number(sel.value) : null; });
+  });
+  wrap.querySelectorAll('.split-amount').forEach(inp => {
+    inp.addEventListener('input', () => {
+      splitRows[Number(inp.dataset.idx)].amount = parseFloat(inp.value);
+      updateSplitRemaining();
+    });
+  });
+  wrap.querySelectorAll('.split-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      splitRows.splice(Number(btn.dataset.idx), 1);
+      renderSplitRows();
+      updateSplitRemaining();
+    });
+  });
+  updateSplitRemaining();
+}
+
+function enterSplitMode(prefillFirstRowWithFullAmount) {
+  splitMode = true;
+  document.getElementById('txn-detail-category-single-wrap').style.display = 'none';
+  document.getElementById('txn-detail-split-wrap').style.display = 'block';
+  document.getElementById('txn-detail-split-toggle-off').style.display = splitWasAlreadySaved ? 'none' : 'block';
+  if (splitRows.length === 0) {
+    splitRows.push({ category_id: null, amount: prefillFirstRowWithFullAmount ? currentTxnTotalAbs() : NaN });
+  }
+  renderSplitRows();
+}
+
+function exitSplitMode() {
+  splitMode = false;
+  splitRows = [];
+  document.getElementById('txn-detail-category-single-wrap').style.display = 'block';
+  document.getElementById('txn-detail-split-wrap').style.display = 'none';
+}
+
+document.getElementById('txn-detail-split-toggle-on').addEventListener('click', () => enterSplitMode(true));
+document.getElementById('txn-detail-split-toggle-off').addEventListener('click', () => exitSplitMode());
+document.getElementById('txn-detail-split-add-row').addEventListener('click', () => {
+  splitRows.push({ category_id: null, amount: NaN });
+  renderSplitRows();
+});
+document.getElementById('txn-detail-amount').addEventListener('input', () => { if (splitMode) updateSplitRemaining(); });
+
 function renderReceiptPreview() {
   const el = document.getElementById('receipt-photos');
   const existingHtml = existingReceipts.map(r => `
@@ -2099,6 +2250,9 @@ async function openTxnDetail(txnId) {
   existingReceipts = [];
   stagedAankoopFiles = [];
   existingPossession = null;
+  splitMode = false;
+  splitRows = [];
+  splitWasAlreadySaved = false;
 
   let txn = null;
   if (txnId) {
@@ -2116,6 +2270,9 @@ async function openTxnDetail(txnId) {
   document.getElementById('txn-detail-recurring-wrap').style.display = txnId ? 'none' : 'flex';
   document.getElementById('txn-detail-recurring-freq-wrap').style.display = 'none';
   document.getElementById('txn-detail-recurring').checked = false;
+  // Split-transacties zijn bewust privé-only (scope-beslissing i.v.m. de budget/dashboard-aggregaties);
+  // op zakelijke transacties blijft de "+ Splitsen"-optie verborgen.
+  document.getElementById('txn-detail-split-toggle-on').style.display = targetScope === 'prive' ? 'inline-block' : 'none';
 
   loadPayeeSuggestions();
 
@@ -2132,6 +2289,15 @@ async function openTxnDetail(txnId) {
 
     const { data: receipts } = await sb.from('transaction_receipts').select('*').eq('transaction_id', txnId);
     existingReceipts = receipts || [];
+
+    const { data: existingSplits } = await sb.from('transaction_splits').select('category_id, amount').eq('transaction_id', txnId);
+    if (existingSplits && existingSplits.length > 0) {
+      splitRows = existingSplits.map(s => ({ category_id: s.category_id, amount: Math.abs(Number(s.amount)) }));
+      splitWasAlreadySaved = true;
+      enterSplitMode(false);
+    } else {
+      exitSplitMode();
+    }
 
     const { data: poss } = await sb.from('possessions').select('*, possession_photos(*)').eq('transaction_id', txnId).maybeSingle();
     if (poss) {
@@ -2150,6 +2316,7 @@ async function openTxnDetail(txnId) {
     setDateValue('txn-detail-date', toLocalISODate(new Date()));
     document.getElementById('txn-detail-cleared').checked = true;
     document.getElementById('txn-detail-notitie').value = '';
+    exitSplitMode();
   }
 
   renderReceiptPreview();
@@ -2204,18 +2371,28 @@ document.getElementById('aankoop-file-input').addEventListener('change', (e) => 
 document.getElementById('txn-detail-save-btn').addEventListener('click', async () => {
   const account_id = document.getElementById('txn-detail-account').value;
   const catLabel = document.getElementById('txn-detail-category-search').value.trim();
-  if (catLabel && !txnDetailCatLabelToId[catLabel]) {
+  if (!splitMode && catLabel && !txnDetailCatLabelToId[catLabel]) {
     alert('Kies een bestaande categorie uit de lijst, of laat het veld leeg voor Ready to Assign.');
     return;
   }
-  const category_id = catLabel ? txnDetailCatLabelToId[catLabel] : null;
   const payee = document.getElementById('txn-detail-payee').value;
   const rawAmount = parseFloat(document.getElementById('txn-detail-amount').value);
-  const amount = isNaN(rawAmount) ? NaN : (getAmountType('txn-detail') === 'income' ? Math.abs(rawAmount) : -Math.abs(rawAmount));
+  const sign = getAmountType('txn-detail') === 'income' ? 1 : -1;
+  const amount = isNaN(rawAmount) ? NaN : sign * Math.abs(rawAmount);
   const date = document.getElementById('txn-detail-date').value;
   const cleared = document.getElementById('txn-detail-cleared').checked;
   const notitie = document.getElementById('txn-detail-notitie').value;
   if (!account_id || isNaN(amount) || !date) { alert('Vul rekening, bedrag en datum in.'); return; }
+
+  let finalizedSplits = null;
+  if (splitMode) {
+    if (splitRows.length < 2) { alert('Een splitsing heeft minimaal 2 categorieën nodig.'); return; }
+    if (splitRows.some(r => isNaN(r.amount) || r.amount <= 0)) { alert('Vul voor elke rij een bedrag groter dan 0 in.'); return; }
+    const remaining = updateSplitRemaining();
+    if (Math.abs(remaining) >= 0.005) { alert('De bedragen van de splitsing tellen nog niet op tot het totaalbedrag.'); return; }
+    finalizedSplits = splitRows.map(r => ({ category_id: r.category_id, amount: sign * Math.abs(r.amount), notitie: null }));
+  }
+  const category_id = splitMode ? null : (catLabel ? txnDetailCatLabelToId[catLabel] : null);
 
   let txnId = currentTxnId;
   const isNewTxn = !txnId;
@@ -2233,6 +2410,15 @@ document.getElementById('txn-detail-save-btn').addEventListener('click', async (
       const { error: recErr } = await sb.from('recurring_transactions').insert({ account_id, category_id, payee, amount, frequency, next_date, active: true, notitie });
       if (recErr) console.error(recErr);
     }
+  }
+
+  // Splits altijd eerst wissen en opnieuw invoegen (simpelst en robuust bij bewerken); bij een
+  // niet-gesplitste transactie blijft dit gewoon een no-op delete op een lege set.
+  const { error: delSplitsErr } = await sb.from('transaction_splits').delete().eq('transaction_id', txnId);
+  if (delSplitsErr) console.error(delSplitsErr);
+  if (finalizedSplits) {
+    const { error: insSplitsErr } = await sb.from('transaction_splits').insert(finalizedSplits.map(s => ({ ...s, transaction_id: txnId })));
+    if (insSplitsErr) { console.error(insSplitsErr); alert('Transactie opgeslagen, maar de splitsing kon niet worden opgeslagen.'); }
   }
 
   for (const file of stagedReceiptFiles) {
@@ -2933,24 +3119,48 @@ async function deleteCategory(id) {
 
 // ---- Zakelijk ----
 let zakTxnSearch = '';
-let zakSortDesc = false;
+let zakSortDesc = true;
+
+let zakTxnViewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+function updateZakMonthLabel() {
+  const label = document.getElementById('zak-month-label');
+  if (label) label.textContent = zakTxnViewMonth.toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
+}
 
 async function loadZakelijk() {
-  const { startStr, endStr } = monthBounds();
-
   const { data: zakAccounts } = await sb.from('accounts').select('id, name, bank, starting_balance').eq('scope', 'zakelijk').order('name');
   const { data: zakCats } = await sb.from('categories').select('id, name').eq('scope', 'zakelijk').order('name');
 
-  let zakTxnQuery = sb.from('transactions')
-    .select('id, date, payee, notitie, amount, cleared, link_type, category_id, categories(name), accounts!inner(scope, name, bank)')
-    .eq('accounts.scope', 'zakelijk')
-    .gte('date', startStr).lt('date', endStr);
-  if (zakAccountFilter.size > 0) zakTxnQuery = zakTxnQuery.in('account_id', [...zakAccountFilter]);
-  const { data: zakTxns } = await zakTxnQuery;
+  // Volledige, chronologische ledger ophalen (zelfde aanpak als Transacties) zodat het lopend saldo
+  // altijd chronologisch doorrekent, ongeacht welke maand of sorteerrichting wordt getoond.
+  const startingByAccount = {};
+  (zakAccounts || []).forEach(a => { startingByAccount[a.id] = Number(a.starting_balance); });
+  const zakAccountIds = (zakAccounts || []).map(a => a.id);
+  const balanceAfter = {};
+  if (zakAccountIds.length > 0) {
+    const { data: allZakTxnsWithAmount } = await sb.from('transactions').select('id, account_id, amount, date')
+      .in('account_id', zakAccountIds).order('date', { ascending: true }).order('id', { ascending: true });
+    const runningByAccount = {};
+    (allZakTxnsWithAmount || []).forEach(t => {
+      const running = (runningByAccount[t.account_id] !== undefined ? runningByAccount[t.account_id] : (startingByAccount[t.account_id] || 0)) + Number(t.amount);
+      runningByAccount[t.account_id] = running;
+      balanceAfter[t.id] = running;
+    });
+  }
+
+  // Resultaat + categorie-totalen blijven gekoppeld aan de bekeken maand via de ‹›-navigatie,
+  // los van een eventuele actieve zoekterm in de lijst hieronder (zelfde principe als voorheen,
+  // nu consistent toegepast nu de lijst zelf ook doorzoekbaar is over de volledige historie).
+  const { startStr: monthStart, endStr: monthEnd } = monthBounds(zakTxnViewMonth);
+  let resultaatQuery = sb.from('transactions').select('amount, category_id, accounts!inner(scope)')
+    .eq('accounts.scope', 'zakelijk').gte('date', monthStart).lt('date', monthEnd);
+  if (zakAccountFilter.size > 0) resultaatQuery = resultaatQuery.in('account_id', [...zakAccountFilter]);
+  const { data: resultaatTxns } = await resultaatQuery;
 
   const perCat = {};
   let inkomsten = 0, uitgaven = 0;
-  (zakTxns || []).forEach(t => {
+  (resultaatTxns || []).forEach(t => {
     const amt = Number(t.amount);
     if (t.category_id) perCat[t.category_id] = (perCat[t.category_id] || 0) + amt;
     if (amt >= 0) inkomsten += amt; else uitgaven += amt;
@@ -2988,20 +3198,40 @@ async function loadZakelijk() {
     });
   }
 
+  // Transactielijst: zelfde patroon als Transacties — volledige historie doorzoekbaar via ilike,
+  // anders maand-gescoped met ‹›-navigatie; de maandnavigatie verbergt zich tijdens het zoeken en
+  // komt terug zodra het zoekveld leeg is.
+  let zakListQuery = sb.from('transactions')
+    .select('id, date, payee, notitie, amount, cleared, link_type, category_id, categories(name), accounts!inner(scope, name, bank)')
+    .eq('accounts.scope', 'zakelijk')
+    .order('date', { ascending: false }).order('id', { ascending: false });
+  if (zakAccountFilter.size > 0) zakListQuery = zakListQuery.in('account_id', [...zakAccountFilter]);
+
   const txnsEl = document.getElementById('zak-transactions-list');
-  const searchTerm = zakTxnSearch.trim().toLowerCase();
-  const filteredZakTxns = searchTerm
-    ? (zakTxns || []).filter(t => (t.payee || '').toLowerCase().includes(searchTerm) || (t.notitie || '').toLowerCase().includes(searchTerm))
-    : (zakTxns || []);
-  if (filteredZakTxns.length === 0) {
+  const searchTerm = zakTxnSearch.trim();
+  const monthNav = document.getElementById('zak-month-nav');
+  if (searchTerm) {
+    monthNav.style.display = 'none';
+    const escaped = searchTerm.replace(/[%,]/g, '');
+    zakListQuery = zakListQuery.or(`payee.ilike.%${escaped}%,notitie.ilike.%${escaped}%`).limit(50);
+  } else {
+    monthNav.style.display = 'flex';
+    updateZakMonthLabel();
+    zakListQuery = zakListQuery.gte('date', monthStart).lt('date', monthEnd).limit(500);
+  }
+  const { data: zakListData, error: zakListErr } = await zakListQuery;
+  if (zakListErr) console.error(zakListErr);
+
+  if (!zakListData || zakListData.length === 0) {
     txnsEl.innerHTML = `<div class="empty">${searchTerm ? 'Geen transacties gevonden.' : 'Nog geen zakelijke transacties.'}</div>`;
   } else {
-    let sorted = [...filteredZakTxns].sort((a, b) => a.date.localeCompare(b.date));
-    if (zakSortDesc) sorted = sorted.reverse();
-    const rowsChrono = sorted.map(t => ({
+    let chronological = [...zakListData].reverse(); // register-stijl: oud boven, nieuw onder
+    if (zakSortDesc) chronological = chronological.reverse();
+    const rowsChrono = chronological.map(t => ({
       id: t.id, date: t.date, payee: t.payee, amount: Number(t.amount), cleared: t.cleared,
       categoryName: t.categories?.name, link_type: t.link_type,
-      accountName: t.accounts?.name, bank: t.accounts?.bank
+      accountName: t.accounts?.name, bank: t.accounts?.bank,
+      balanceAfter: balanceAfter[t.id]
     }));
     const rows = sortUnclearedToBottom(rowsChrono);
     txnsEl.innerHTML = renderTransactionRows(rows, { showAccount: true, context: 'zak' });
@@ -3012,6 +3242,15 @@ async function loadZakelijk() {
   window._zakAccounts = zakAccounts || [];
   window._zakCats = zakCats || [];
 }
+
+document.getElementById('zak-month-prev').addEventListener('click', () => {
+  zakTxnViewMonth = new Date(zakTxnViewMonth.getFullYear(), zakTxnViewMonth.getMonth() - 1, 1);
+  loadZakelijk();
+});
+document.getElementById('zak-month-next').addEventListener('click', () => {
+  zakTxnViewMonth = new Date(zakTxnViewMonth.getFullYear(), zakTxnViewMonth.getMonth() + 1, 1);
+  loadZakelijk();
+});
 
 document.getElementById('zak-select-toggle').addEventListener('click', () => toggleBulkMode('zak', loadZakelijk));
 document.getElementById('zak-txn-search').addEventListener('input', (e) => {
