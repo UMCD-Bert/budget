@@ -607,7 +607,11 @@
     <label style="display:flex; align-items:center; gap:6px; margin-top:10px;">
       <input type="checkbox" id="txn-detail-cleared" style="width:auto;"> Cleared
     </label>
-    <label style="display:flex; align-items:center; gap:6px;" id="txn-detail-recurring-wrap">
+    <div id="txn-detail-recurring-match" style="display:none; font-size:13px; background:#f5f5f5; border-radius:6px; padding:8px 10px; margin-top:10px;">
+      <span id="txn-detail-recurring-match-text"></span>
+      <button type="button" id="txn-detail-recurring-match-link" style="background:none; border:none; color:var(--green); text-decoration:underline; font-size:13px; padding:0; margin-left:4px; cursor:pointer;">Bekijk/wijzig</button>
+    </div>
+    <label style="display:flex; align-items:center; gap:6px; margin-top:10px;" id="txn-detail-recurring-wrap">
       <input type="checkbox" id="txn-detail-recurring" style="width:auto;"> Herhalend
     </label>
     <div id="txn-detail-recurring-freq-wrap" style="display:none;">
@@ -709,7 +713,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.24';
+const APP_VERSION = 'v3.25';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -2163,6 +2167,44 @@ document.getElementById('txn-detail-split-add-row').addEventListener('click', ()
 });
 document.getElementById('txn-detail-amount').addEventListener('input', () => { if (splitMode) updateSplitRemaining(); });
 
+// ---- Herhalend-match: koppelt een bestaande transactie (best-effort) terug aan een recurring_transactions-rij ----
+// Er is geen echte foreign key tussen een transactie en zijn herhalende sjabloon (het zijn twee losse
+// dingen), dus dit is altijd een beste-poging-match op rekening + payee (+ categorie, indien bekend).
+let matchedRecurringId = null;
+
+async function refreshRecurringMatch(txn) {
+  matchedRecurringId = null;
+  const matchWrap = document.getElementById('txn-detail-recurring-match');
+  const checkboxWrap = document.getElementById('txn-detail-recurring-wrap');
+  if (!txn) {
+    matchWrap.style.display = 'none';
+    checkboxWrap.style.display = 'flex';
+    return;
+  }
+  let query = sb.from('recurring_transactions').select('*').eq('account_id', txn.account_id).eq('payee', txn.payee).eq('active', true);
+  const { data: candidates } = await query;
+  let match = null;
+  if (candidates && candidates.length > 0) {
+    match = candidates.find(c => c.category_id === txn.category_id) || candidates[0];
+  }
+  if (match) {
+    matchedRecurringId = match.id;
+    const freqLabels = { weekly: 'elke week', biweekly: 'elke 2 weken', '4weekly': 'elke 4 weken', monthly: 'elke maand', '2monthly': 'elke 2 maanden', '3monthly': 'elke 3 maanden', yearly: 'elk jaar' };
+    document.getElementById('txn-detail-recurring-match-text').textContent =
+      `🔁 Herhalend: ${freqLabels[match.frequency] || match.frequency}, eerstvolgende ${formatDateNL(match.next_date)}.`;
+    matchWrap.style.display = 'block';
+    checkboxWrap.style.display = 'none';
+  } else {
+    matchWrap.style.display = 'none';
+    checkboxWrap.style.display = 'flex';
+  }
+}
+
+document.getElementById('txn-detail-recurring-match-link').addEventListener('click', () => {
+  document.getElementById('txn-detail-bg').classList.remove('open');
+  openRecurringOverview();
+});
+
 function renderReceiptPreview() {
   const el = document.getElementById('receipt-photos');
   const existingHtml = existingReceipts.map(r => `
@@ -2268,9 +2310,9 @@ async function openTxnDetail(txnId) {
     .map(a => `<option value="${a.id}">${a.name}</option>`).join('');
 
   document.getElementById('txn-detail-delete-btn').style.display = txnId ? 'block' : 'none';
-  document.getElementById('txn-detail-recurring-wrap').style.display = txnId ? 'none' : 'flex';
   document.getElementById('txn-detail-recurring-freq-wrap').style.display = 'none';
   document.getElementById('txn-detail-recurring').checked = false;
+  matchedRecurringId = null;
   // Split-transacties zijn bewust privé-only (scope-beslissing i.v.m. de budget/dashboard-aggregaties);
   // op zakelijke transacties blijft de "+ Splitsen"-optie verborgen.
   document.getElementById('txn-detail-split-toggle-on').style.display = targetScope === 'prive' ? 'inline-block' : 'none';
@@ -2304,6 +2346,8 @@ async function openTxnDetail(txnId) {
     if (poss) {
       existingPossession = poss;
     }
+
+    await refreshRecurringMatch(txn);
   } else {
     document.getElementById('txn-editor-title').textContent = 'Nieuwe transactie';
     let defaultAccountId = null;
@@ -2318,6 +2362,7 @@ async function openTxnDetail(txnId) {
     document.getElementById('txn-detail-cleared').checked = true;
     document.getElementById('txn-detail-notitie').value = '';
     exitSplitMode();
+    await refreshRecurringMatch(null);
   }
 
   renderReceiptPreview();
@@ -2404,13 +2449,15 @@ document.getElementById('txn-detail-save-btn').addEventListener('click', async (
     const { data, error } = await sb.from('transactions').insert({ account_id, category_id, payee, amount, date, cleared, notitie }).select().single();
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
     txnId = data.id;
+  }
 
-    if (document.getElementById('txn-detail-recurring').checked) {
-      const frequency = document.getElementById('txn-detail-recurring-freq').value;
-      const next_date = computeNextDate(date, frequency);
-      const { error: recErr } = await sb.from('recurring_transactions').insert({ account_id, category_id, payee, amount, frequency, next_date, active: true, notitie });
-      if (recErr) console.error(recErr);
-    }
+  // Herhalend aanmaken kan zowel bij een nieuwe als een bestaande transactie (mits er nog geen
+  // gekoppelde recurring_transactions-rij is gevonden — anders is de checkbox sowieso verborgen).
+  if (!matchedRecurringId && document.getElementById('txn-detail-recurring-wrap').style.display !== 'none' && document.getElementById('txn-detail-recurring').checked) {
+    const frequency = document.getElementById('txn-detail-recurring-freq').value;
+    const next_date = computeNextDate(date, frequency);
+    const { error: recErr } = await sb.from('recurring_transactions').insert({ account_id, category_id, payee, amount, frequency, next_date, active: true, notitie });
+    if (recErr) console.error(recErr);
   }
 
   // Splits altijd eerst wissen en opnieuw invoegen (simpelst en robuust bij bewerken); bij een
