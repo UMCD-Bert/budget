@@ -713,7 +713,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.25';
+const APP_VERSION = 'v3.26';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -2457,7 +2457,10 @@ document.getElementById('txn-detail-save-btn').addEventListener('click', async (
     const frequency = document.getElementById('txn-detail-recurring-freq').value;
     const next_date = computeNextDate(date, frequency);
     const { error: recErr } = await sb.from('recurring_transactions').insert({ account_id, category_id, payee, amount, frequency, next_date, active: true, notitie });
-    if (recErr) console.error(recErr);
+    if (recErr) {
+      console.error(recErr);
+      alert('Transactie is opgeslagen, maar het instellen als herhalend is mislukt: ' + (recErr.message || JSON.stringify(recErr)));
+    }
   }
 
   // Splits altijd eerst wissen en opnieuw invoegen (simpelst en robuust bij bewerken); bij een
