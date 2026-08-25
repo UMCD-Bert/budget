@@ -713,7 +713,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.26';
+const APP_VERSION = 'v3.27';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -1553,11 +1553,10 @@ async function loadBudget() {
   cats.forEach(c => { const k = c.parent_id || 'root'; (byParent[k] = byParent[k] || []).push(c); });
   Object.values(byParent).forEach(arr => arr.sort((a,b) => a.sort_order - b.sort_order));
 
-  // Voor Inkomsten is "resterend" niet goed/fout op dezelfde manier als bij Uitgaven/Reserveringen:
-  // negatief (meer binnengekomen dan begroot) is juist goed nieuws -> groen; positief (nog niet
-  // (volledig) binnen) is gewoon de normale, verwachte staat -> neutraal, geen rood.
+  // Voor Inkomsten tonen we het bedrag nu als een gewoon saldo (gerealiseerd - begroot): een
+  // overschot (meer binnen dan begroot) is positief en groen, een tekort is negatief en rood —
+  // dezelfde simpele regel als Uitgaven/Reserveringen, geen aparte inkomen-uitzondering meer nodig.
   function resterendClass(resterend, type) {
-    if (type === 'income') return resterend < 0 ? 'positive' : 'neutral';
     return resterend >= 0 ? 'positive' : 'negative';
   }
 
@@ -1566,8 +1565,9 @@ async function loadBudget() {
     const begroot = pendingAssignValues.hasOwnProperty(pendingKey) ? pendingAssignValues[pendingKey] : (assignedMap[catId] || 0);
     const gerealiseerd = spentMap[catId] || 0;
     if (type === 'income') {
-      // Inkomen is NIET cumulatief: iedere maand begint opnieuw (verwacht deze maand - ontvangen deze maand)
-      return { begroot, gerealiseerd, resterend: begroot - gerealiseerd };
+      // Inkomen is NIET cumulatief: iedere maand begint opnieuw. Saldo = gerealiseerd - begroot,
+      // zodat een overschot positief/groen wordt getoond in plaats van een negatief getal.
+      return { begroot, gerealiseerd, resterend: gerealiseerd - begroot };
     }
     const cumBegroot = cumAssignedMap[catId] || 0;
     const cumGerealiseerd = cumSpentMap[catId] || 0;
@@ -1584,11 +1584,12 @@ async function loadBudget() {
   }
 
   function numbersBlock(n, type) {
+    const resterendLabel = type === 'income' ? 'Saldo' : 'Resterend';
     return `
       <div class="cat-numbers">
         <div class="num-col"><div class="num-label">Begroot</div><div class="num-value">${formatEuroWhole(n.begroot)}</div></div>
         <div class="num-col"><div class="num-label">Gerealiseerd</div><div class="num-value">${formatEuroWhole(n.gerealiseerd)}</div></div>
-        <div class="num-col"><div class="num-label">Resterend</div><div class="num-value ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</div></div>
+        <div class="num-col"><div class="num-label">${resterendLabel}</div><div class="num-value ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</div></div>
       </div>`;
   }
 
@@ -1631,7 +1632,7 @@ async function loadBudget() {
     }
     const n = leafNumbers(c.id, type);
     const expectedDue = expectedMap[c.id] || 0;
-    const resterendMetVerwacht = type === 'income' ? (n.resterend - expectedDue) : (n.resterend + expectedDue);
+    const resterendMetVerwacht = n.resterend + expectedDue;
     const isExpanded = expandedBudgetRowIds.has(String(c.id));
     return `
       <div class="cat-row">
