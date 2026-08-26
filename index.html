@@ -713,7 +713,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.27';
+const APP_VERSION = 'v3.28';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -1379,9 +1379,11 @@ function monthBounds(refDate) {
 async function updateMoneyAge() {
   // Geldleeftijd (YNAB-stijl): mediane FIFO-leeftijd van de laatste 10 privé-uitgaven
   const { data: priveAccountsForAge } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
+  const todayStr = toLocalISODate(new Date());
   const { data: priveTxnsForAge } = await sb.from('transactions')
     .select('date, amount, accounts!inner(scope)')
     .eq('accounts.scope', 'prive')
+    .lte('date', todayStr)
     .order('date', { ascending: true })
     .order('id', { ascending: true });
   const earliestDate = (priveTxnsForAge && priveTxnsForAge.length > 0) ? priveTxnsForAge[0].date : toLocalISODate(new Date());
