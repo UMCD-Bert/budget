@@ -110,14 +110,16 @@
   .cat-numbers .num-value.positive { color:#222; }
   .cat-numbers .num-value.negative { color:var(--red); }
   .cat-numbers .num-value.neutral { color:#888; }
-  .leaf-begroot-row { display:flex; align-items:center; gap:6px; margin-top:6px; }
-  .leaf-begroot-row .leaf-stat-label { font-size:11px; color:#999; text-transform:uppercase; letter-spacing:.3px; min-width:48px; }
-  .leaf-begroot-row input.assign { flex:1; min-width:0; text-align:center; border:1px solid var(--border); border-radius:4px; padding:6px 2px; font-weight:bold; box-sizing:border-box; }
-  .leaf-stats-row { display:flex; justify-content:space-between; gap:12px; margin-top:6px; flex-wrap:wrap; }
-  .leaf-stats-row .leaf-stat-label { font-size:10px; text-transform:uppercase; color:#999; letter-spacing:.3px; margin-right:4px; }
-  .leaf-stats-row .leaf-stat-value { font-weight:bold; font-size:13px; }
-  .leaf-stats-row .leaf-stat-value.positive { color:var(--green); }
-  .leaf-stats-row .leaf-stat-value.negative { color:var(--red); }
+  .leaf-begroot-row { display:flex; align-items:center; gap:8px; padding:4px 0; }
+  .leaf-begroot-row .leaf-stat-label { font-size:13px; color:#666; min-width:70px; }
+  .leaf-begroot-row input.assign { width:80px; flex:0 0 auto; text-align:right; border:1px solid var(--border); border-radius:4px; padding:5px 8px; font-size:14px; font-weight:400; box-sizing:border-box; }
+  .leaf-stats-row { display:flex; flex-direction:column; gap:2px; margin-top:8px; }
+  .leaf-stat { display:flex; justify-content:space-between; font-size:13px; padding:2px 0; }
+  .leaf-stats-row .leaf-stat-label { font-size:13px; color:#666; margin-right:4px; }
+  .leaf-stats-row .leaf-stat-value { font-size:13px; font-weight:400; color:#222; }
+  .leaf-stats-row .leaf-stat-value.positive { color:#222; }
+  .leaf-stats-row .leaf-stat-value.negative { color:var(--red); font-weight:600; }
+  .cat-detail-link { background:none; border:none; padding:0; color:var(--green); font-size:13px; cursor:pointer; text-decoration:underline; touch-action:manipulation; }
   .cat-row-summary { display:flex; align-items:center; gap:10px; cursor:pointer; padding:11px 2px; touch-action:manipulation; }
   .cat-row-summary .name { font-size:14px; font-weight:400; color:#222; flex:0 1 auto; min-width:0; overflow-wrap:break-word; }
   .cat-row-bar-track { flex:1; height:4px; border-radius:2px; background:#e3e3dd; overflow:hidden; min-width:24px; }
@@ -725,7 +727,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.31';
+const APP_VERSION = 'v3.33';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -1620,16 +1622,15 @@ async function loadBudget() {
       </div>`;
   }
 
-  function leafNumbersBlock(n, catId) {
+  function leafNumbersBlock(n, catId, type) {
     return `
       <div class="leaf-begroot-row">
         <span class="leaf-stat-label">Begroot</span>
-        <button type="button" class="stepper-btn assign-minus" data-cat="${catId}" style="width:32px; height:30px; font-size:12px; padding:0;">−</button>
         <input class="assign" data-cat="${catId}" type="number" step="1" value="${Math.round(n.begroot)}">
-        <button type="button" class="stepper-btn assign-plus" data-cat="${catId}" style="width:32px; height:30px; font-size:12px; padding:0;">+</button>
       </div>
       <div class="leaf-stats-row">
         <div class="leaf-stat"><span class="leaf-stat-label">Gerealiseerd</span> <span class="leaf-stat-value">${formatEuroWhole(n.gerealiseerd)}</span></div>
+        <div class="leaf-stat"><span class="leaf-stat-label">Resterend</span> <span class="leaf-stat-value ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</span></div>
       </div>`;
   }
 
@@ -1669,10 +1670,10 @@ async function loadBudget() {
           <div class="resterend-inline ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</div>
         </div>
         <div class="cat-row-detail" style="${isExpanded ? '' : 'display:none;'}">
-          ${leafNumbersBlock(n, c.id)}
+          ${leafNumbersBlock(n, c.id, type)}
           ${expectedDue !== 0 ? `<div class="expected">Nog te verwachten deze maand: ${formatEuroWhole(resterendMetVerwacht)}</div>` : ''}
-          <div style="text-align:right; margin-top:4px;">
-            <button type="button" class="select-toggle-btn" data-goto-txn="${c.id}" style="padding:4px 10px; font-size:12px;">🧾 Bekijk transacties</button>
+          <div style="margin-top:8px;">
+            <button type="button" class="cat-detail-link" data-goto-txn="${c.id}">Bekijk transacties</button>
           </div>
         </div>
       </div>`;
@@ -1704,22 +1705,6 @@ async function loadBudget() {
   renderColumn(containerReservation, totalReservationEl, reservationRoots, 'reservation', 'Nog geen reserveringscategorieën.', 'Reserveringen');
 
   [containerExpense, containerIncome, containerReservation].forEach(container => {
-    container.querySelectorAll('.assign-minus').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const inp = container.querySelector(`.assign[data-cat="${btn.dataset.cat}"]`);
-        const newVal = Math.round(parseFloat(inp.value) - 50);
-        inp.value = newVal;
-        scheduleAssignSave(btn.dataset.cat, newVal);
-      });
-    });
-    container.querySelectorAll('.assign-plus').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const inp = container.querySelector(`.assign[data-cat="${btn.dataset.cat}"]`);
-        const newVal = Math.round(parseFloat(inp.value) + 50);
-        inp.value = newVal;
-        scheduleAssignSave(btn.dataset.cat, newVal);
-      });
-    });
     container.querySelectorAll('input.assign').forEach(inp => {
       inp.addEventListener('focus', function() { this.value = ''; });
     });
@@ -2099,8 +2084,12 @@ async function loadTransactions() {
   const badgeEl = document.getElementById('txn-category-filter-badge');
   if (txnCategoryFilter !== null) {
     const { data: splitMatchRows } = await sb.from('transaction_splits').select('transaction_id').eq('category_id', txnCategoryFilter);
-    const splitMatchIds = new Set((splitMatchRows || []).map(r => r.transaction_id));
-    data = (data || []).filter(t => t.category_id === txnCategoryFilter || splitMatchIds.has(t.id));
+    // v3.32-bugfix: Supabase geeft bigint-kolommen als STRING terug (i.p.v. number), terwijl
+    // txnCategoryFilter via Number() is gezet — een strikte === tussen die twee faalde dus altijd
+    // stil, met "Geen transacties gevonden" tot gevolg zodra de kolom effectief bigint is. Vergelijk
+    // daarom altijd via String(), ongeacht het onderliggende kolomtype.
+    const splitMatchIds = new Set((splitMatchRows || []).map(r => String(r.transaction_id)));
+    data = (data || []).filter(t => String(t.category_id) === String(txnCategoryFilter) || splitMatchIds.has(String(t.id)));
     document.getElementById('txn-category-filter-name').textContent = txnCategoryFilterName;
     badgeEl.style.display = 'block';
   } else {
