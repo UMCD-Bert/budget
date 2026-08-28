@@ -33,7 +33,8 @@
   .group { margin-bottom:16px; }
   .group h3 { margin:0 0 6px 4px; font-size:13px; text-transform:uppercase; color:#777; }
   .cat-row, .acc-row, .txn-row { background:var(--card); border-radius:6px; padding:10px 12px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }
-  .cat-row { flex-direction:column; align-items:stretch; gap:4px; }
+  .cat-row { background:none; border-radius:0; padding:0; margin-bottom:0; border-bottom:0.5px solid var(--border); flex-direction:column; align-items:stretch; gap:0; }
+  .cat-row:last-child { border-bottom:none; }
   .cat-row .top-line { display:flex; justify-content:flex-end; align-items:center; gap:4px; }
   .cat-row .name { font-weight:600; overflow-wrap:break-word; }
   .cat-row .avail { font-weight:bold; min-width:64px; text-align:right; margin-left:auto; }
@@ -101,12 +102,12 @@
   .ie-tab-btn.active { background:#1b5e20; color:#fff; border-color:#1b5e20; }
   .cat-tree-row.hoofdcat { border-left:4px solid #1b5e20; font-weight:bold; font-size:15px; margin-top:10px; }
   .cat-tree-row.subcat { font-weight:normal; font-size:13px; color:#444; background:transparent; box-shadow:none; }
-  .budget-group.hoofdcat-group > h3 { border-left:4px solid #1b5e20; padding-left:8px; font-size:14px; }
+  .budget-group.hoofdcat-group > h3 { padding-left:0; font-size:14px; font-weight:500; }
   .cat-numbers { display:flex; gap:6px; align-items:center; margin-top:4px; }
   .cat-numbers .num-col { flex:1; min-width:0; text-align:center; }
   .cat-numbers .num-label { font-size:9px; text-transform:uppercase; color:#999; letter-spacing:.3px; }
   .cat-numbers .num-value { font-weight:bold; font-size:13px; }
-  .cat-numbers .num-value.positive { color:var(--green); }
+  .cat-numbers .num-value.positive { color:#222; }
   .cat-numbers .num-value.negative { color:var(--red); }
   .cat-numbers .num-value.neutral { color:#888; }
   .leaf-begroot-row { display:flex; align-items:center; gap:6px; margin-top:6px; }
@@ -117,13 +118,15 @@
   .leaf-stats-row .leaf-stat-value { font-weight:bold; font-size:13px; }
   .leaf-stats-row .leaf-stat-value.positive { color:var(--green); }
   .leaf-stats-row .leaf-stat-value.negative { color:var(--red); }
-  .cat-row-summary { display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
-  .cat-row-summary .name { font-weight:600; }
-  .resterend-inline { font-weight:bold; font-size:15px; }
-  .resterend-inline.positive { color:var(--green); }
-  .resterend-inline.negative { color:var(--red); }
+  .cat-row-summary { display:flex; align-items:center; gap:10px; cursor:pointer; padding:11px 2px; touch-action:manipulation; }
+  .cat-row-summary .name { font-size:14px; font-weight:400; color:#222; flex:0 1 auto; min-width:0; overflow-wrap:break-word; }
+  .cat-row-bar-track { flex:1; height:4px; border-radius:2px; background:#e3e3dd; overflow:hidden; min-width:24px; }
+  .cat-row-bar-fill { height:100%; }
+  .resterend-inline { font-size:14px; min-width:56px; text-align:right; flex-shrink:0; }
+  .resterend-inline.positive { color:#222; font-weight:400; }
+  .resterend-inline.negative { color:var(--red); font-weight:600; }
   .resterend-inline.neutral { color:#888; }
-  .cat-row-detail { margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); }
+  .cat-row-detail { margin:0 0 10px; padding:10px 12px; background:var(--card); border-radius:8px; }
   .cat-numbers input.assign { width:100%; text-align:center; border:1px solid var(--border); border-radius:4px; padding:4px 2px; font-weight:bold; box-sizing:border-box; }
   .progress-bar-track { height:5px; border-radius:3px; background:#e0e0e0; margin-top:6px; overflow:hidden; }
   .progress-bar-fill { height:100%; border-radius:3px; }
@@ -245,6 +248,12 @@
         <button class="select-toggle-btn" id="account-filter-toggle">Filter op rekening</button>
         <button class="select-toggle-btn" id="main-sort-toggle" title="Sorteervolgorde omdraaien">↑ Nieuwste eerst</button>
         <button class="select-toggle-btn" id="recurring-overview-btn">Toekomstige transacties</button>
+      </div>
+      <div id="txn-category-filter-badge" style="display:none; margin-bottom:6px;">
+        <span class="select-toggle-btn" style="display:inline-flex; align-items:center; gap:6px;">
+          Categorie: <span id="txn-category-filter-name"></span>
+          <button type="button" id="txn-category-filter-clear" style="border:none; background:none; cursor:pointer; font-weight:bold; padding:0;">✕</button>
+        </span>
       </div>
       <div style="margin-bottom:6px;">
         <input type="text" id="main-txn-search" placeholder="Zoek op payee of omschrijving..." style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px;">
@@ -374,7 +383,10 @@
     <label>Rekening</label>
     <select id="zak-txn-account"></select>
     <label>Categorie</label>
-    <select id="zak-txn-category"></select>
+    <div class="cat-picker-wrap" style="position:relative;">
+      <input type="text" id="zak-txn-category-search" autocomplete="off" placeholder="Typ om te zoeken, of laat leeg voor Ongecategoriseerd">
+      <div class="cat-popup" id="zak-txn-category-popup" style="display:none;"></div>
+    </div>
     <label>Payee</label>
     <input type="text" id="zak-txn-payee" list="payee-datalist" placeholder="Bijv. Klant X">
     <label>Bedrag</label>
@@ -713,7 +725,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.28';
+const APP_VERSION = 'v3.31';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -745,11 +757,19 @@ wireIeTabs('budget');
 let activeTab = 'budget';
 document.querySelectorAll('nav button').forEach(btn => {
   btn.addEventListener('click', () => {
+    const previousTab = activeTab;
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     document.querySelectorAll('main > div').forEach(d => d.style.display = 'none');
     document.getElementById('tab-' + btn.dataset.tab).style.display = 'block';
     activeTab = btn.dataset.tab;
+    // v3.29: het categorie-filter (gezet via een doorklik vanuit Budget) is bewust tijdelijk —
+    // zodra je de Transacties-tab verlaat via de navbalk, wist het vanzelf.
+    if (previousTab === 'transactions' && activeTab !== 'transactions' && txnCategoryFilter !== null) {
+      txnCategoryFilter = null;
+      txnCategoryFilterName = '';
+      loadTransactions();
+    }
     if (activeTab === 'zakelijk') loadZakelijk();
     if (activeTab === 'possessions') loadPossessions();
     if (activeTab === 'dashboard') loadDashboard();
@@ -1038,6 +1058,11 @@ const expandedBudgetRowIds = new Set();
 const transactionAccountFilter = new Set();
 let mainTxnSearch = '';
 let mainSortDesc = true;
+// v3.29: categorie-filter voor Transacties, gezet vanuit een doorklik op een Budget-rij.
+// Wist zichzelf zodra je de Transacties-tab via de navbalk verlaat (expliciete keuze).
+let txnCategoryFilter = null;
+let txnCategoryFilterName = '';
+let catsById = {}; // laatst opgebouwde categorie-lookup uit loadBudget(), hergebruikt door de doorklik-link
 let budgetViewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let newMonthPromptShownFor = null;
 const assignSaveTimers = {};
@@ -1445,7 +1470,7 @@ async function loadBudget() {
     .order('sort_order');
   if (cErr) { console.error(cErr); return; }
 
-  const catsById = {};
+  catsById = {};
   (cats || []).forEach(c => catsById[c.id] = c);
   function rootTypeOf(catId) { return rootTypeOfCategory(catId, catsById); }
 
@@ -1613,10 +1638,10 @@ async function loadBudget() {
     const actual = Math.abs(n.gerealiseerd);
     const pct = target > 0 ? Math.min(100, (actual / target) * 100) : (actual > 0 ? 100 : 0);
     const over = target > 0 && actual > target;
-    // Voor Inkomsten is "over" (meer ontvangen dan begroot) juist goed nieuws -> groen, niet rood
-    // (dit was de enige plek die de v3.18-kleurfix nog miste — resterendClass() zelf was al goed).
-    const color = over && type !== 'income' ? 'var(--red)' : '#43a047';
-    return `<div class="progress-bar-track"><div class="progress-bar-fill" style="width:${pct}%; background:${color};"></div></div>`;
+    // Rustige grijze balk als het op schema ligt; alleen rood zodra je echt over budget zit
+    // (voor Inkomsten is "over" juist goed nieuws, dus daar blijft de balk grijs).
+    const color = over && type !== 'income' ? 'var(--red)' : '#999';
+    return `<div class="cat-row-bar-track"><div class="cat-row-bar-fill" style="width:${pct}%; background:${color};"></div></div>`;
   }
 
   function renderNode(c, type, depth) {
@@ -1640,12 +1665,15 @@ async function loadBudget() {
       <div class="cat-row">
         <div class="cat-row-summary" data-expand-toggle="${c.id}">
           <div class="name">${isExpanded ? '▾' : '▸'} ${c.name}</div>
+          ${progressBar(n, type)}
           <div class="resterend-inline ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</div>
         </div>
-        ${progressBar(n, type)}
         <div class="cat-row-detail" style="${isExpanded ? '' : 'display:none;'}">
           ${leafNumbersBlock(n, c.id)}
           ${expectedDue !== 0 ? `<div class="expected">Nog te verwachten deze maand: ${formatEuroWhole(resterendMetVerwacht)}</div>` : ''}
+          <div style="text-align:right; margin-top:4px;">
+            <button type="button" class="select-toggle-btn" data-goto-txn="${c.id}" style="padding:4px 10px; font-size:12px;">🧾 Bekijk transacties</button>
+          </div>
         </div>
       </div>`;
   }
@@ -1709,10 +1737,26 @@ async function loadBudget() {
         loadBudget();
       });
     });
+    container.querySelectorAll('[data-goto-txn]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        goToTransactionsForCategory(Number(btn.dataset.gotoTxn), budgetViewMonth);
+      });
+    });
     container.querySelectorAll('input.assign').forEach(inp => {
       inp.addEventListener('change', () => {
         const catId = inp.dataset.cat;
-        const value = Math.round(parseFloat(inp.value)) || 0;
+        const raw = inp.value.trim();
+        // v3.29-bugfix: een leeg of ongeldig veld (o.a. door Chrome/Safari die <input type=number>
+        // leegmaakt bij Escape) mag NOOIT stilzwijgend als 0 worden opgeslagen — dat overschrijft
+        // per ongeluk het echte begrote bedrag. Bij lege/ongeldige invoer: gewoon terugzetten naar
+        // het laatst gerenderde begrote bedrag (defaultValue, gezet bij elke loadBudget()-render),
+        // niets opslaan.
+        if (raw === '' || isNaN(parseFloat(raw))) {
+          inp.value = inp.defaultValue;
+          return;
+        }
+        const value = Math.round(parseFloat(raw));
         inp.value = value;
         scheduleAssignSave(catId, value);
       });
@@ -1729,21 +1773,109 @@ async function loadPayeeSuggestions() {
   document.getElementById('payee-datalist').innerHTML = uniquePayees.map(p => `<option value="${p}">`).join('');
 }
 
-async function buildLeafCategoryOptions(scope) {
+async function buildCategoryData(scope) {
   const { data: categories } = await sb.from('categories').select('id, parent_id, name, sort_order').eq('scope', scope).order('sort_order');
   const byParent = {};
   (categories || []).forEach(c => { const k = c.parent_id || 'root'; (byParent[k] = byParent[k] || []).push(c); });
   Object.values(byParent).forEach(arr => arr.sort((a, b) => a.sort_order - b.sort_order));
   const orderedLeaves = [];
   function walk(nodeId, trail) {
-    (byParent[nodeId] || []).forEach(c => {
-      const hasKids = (byParent[c.id] || []).length > 0;
-      if (hasKids) walk(c.id, trail.concat(c.name));
-      else orderedLeaves.push({ id: c.id, label: trail.concat(c.name).join(' › ') });
+    return (byParent[nodeId] || []).map(c => {
+      const children = walk(c.id, trail.concat(c.name));
+      if (children.length === 0) orderedLeaves.push({ id: c.id, label: trail.concat(c.name).join(' › ') });
+      return { id: c.id, name: c.name, children };
     });
   }
-  walk('root', []);
-  return orderedLeaves;
+  const tree = walk('root', []);
+  return { tree, leaves: orderedLeaves };
+}
+
+async function buildLeafCategoryOptions(scope) {
+  return (await buildCategoryData(scope)).leaves;
+}
+
+// v3.29: generieke gestapelde categoriekeuze (hoofdcategorie → subcategorie → evt. nog dieper),
+// hergebruikt op elke plek waar je tijdens het invoeren van een transactie een categorie kiest —
+// bewust dezelfde interactie overal, i.p.v. per plek een andere combobox/select-stijl.
+// Typen springt altijd meteen naar de platte, gefilterde lijst (snelle route als je de naam al
+// weet); leeg laten toont de boom om doorheen te tikken. Een knoop zonder kinderen wordt bij tikken
+// meteen geselecteerd i.p.v. een leeg volgend scherm te tonen.
+function attachCategoryPicker(input, popup, getTree, getLeaves, opts) {
+  let path = []; // array van tree-nodes waar je doorheen hebt getikt
+
+  function currentLevelNodes() {
+    let nodes = getTree();
+    for (const seg of path) {
+      const found = nodes.find(n => String(n.id) === String(seg.id));
+      nodes = found ? found.children : [];
+    }
+    return nodes;
+  }
+
+  function labelForLeaf(node) {
+    const match = getLeaves().find(l => String(l.id) === String(node.id));
+    return match ? match.label : node.name;
+  }
+
+  function select(id, label) {
+    input.value = label;
+    path = [];
+    popup.style.display = 'none';
+    opts.onSelect(id, label);
+  }
+
+  function wireRows() {
+    popup.querySelectorAll('[data-node-id]').forEach(el => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const node = currentLevelNodes().find(n => String(n.id) === String(el.dataset.nodeId));
+        if (node) { path.push(node); render(''); }
+      });
+    });
+    popup.querySelectorAll('[data-leaf-id]').forEach(el => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        select(Number(el.dataset.leafId), el.dataset.leafLabel);
+      });
+    });
+    const emptyEl = popup.querySelector('[data-empty]');
+    if (emptyEl) emptyEl.addEventListener('mousedown', (e) => { e.preventDefault(); select(null, ''); });
+    const backEl = popup.querySelector('[data-back]');
+    if (backEl) backEl.addEventListener('mousedown', (e) => { e.preventDefault(); path.pop(); render(''); });
+  }
+
+  function esc(s) { return String(s).replace(/"/g, '&quot;'); }
+
+  function render(filterText) {
+    const term = (filterText || '').trim().toLowerCase();
+    let html;
+    if (term) {
+      const matches = getLeaves().filter(l => l.label.toLowerCase().includes(term));
+      html = `<div class="cat-popup-option cat-popup-empty" data-empty="1">${opts.emptyLabel}</div>`;
+      html += matches.length
+        ? matches.map(l => `<div class="cat-popup-option" data-leaf-id="${l.id}" data-leaf-label="${esc(l.label)}">${l.label}</div>`).join('')
+        : `<div class="cat-popup-none">Geen categorie gevonden</div>`;
+    } else {
+      const nodes = currentLevelNodes();
+      html = path.length > 0
+        ? `<div class="cat-popup-option cat-popup-empty" data-back="1">‹ Terug</div>`
+          + `<div class="cat-popup-option cat-popup-empty" data-empty="1">${opts.emptyLabel}</div>`
+        : `<div class="cat-popup-option cat-popup-empty" data-empty="1">${opts.emptyLabel}</div>`;
+      html += nodes.map(n => {
+        const hasKids = n.children && n.children.length > 0;
+        return hasKids
+          ? `<div class="cat-popup-option" data-node-id="${n.id}">${n.name} ›</div>`
+          : `<div class="cat-popup-option" data-leaf-id="${n.id}" data-leaf-label="${esc(labelForLeaf(n))}">${n.name}</div>`;
+      }).join('');
+    }
+    popup.innerHTML = html;
+    popup.style.display = 'block';
+    wireRows();
+  }
+
+  input.addEventListener('focus', function () { this.select(); path = []; render(''); });
+  input.addEventListener('input', function () { path = []; render(this.value); });
+  input.addEventListener('blur', () => { setTimeout(() => { popup.style.display = 'none'; }, 150); });
 }
 
 async function openRecurringOverview() {
@@ -1957,8 +2089,24 @@ async function loadTransactions() {
       query = query.gte('date', startStr).lt('date', endStr).limit(500);
     }
   }
-  const { data, error: dErr } = await query;
+  let { data, error: dErr } = await query;
   if (dErr) { console.error(dErr); return; }
+
+  // v3.29: categorie-filter (vanuit een doorklik op een Budget-rij). Een gesplitste transactie heeft
+  // op de hoofdrij category_id = null — de categorie zit dan op de split-rijen, dus die tellen we er
+  // via een aparte lookup bij. Zonder dit zou een gefilterde categorie die alleen via splitsingen
+  // voorkomt, hier onterecht leeg lijken (dezelfde bug-klasse als destijds in de Budget-telling zelf).
+  const badgeEl = document.getElementById('txn-category-filter-badge');
+  if (txnCategoryFilter !== null) {
+    const { data: splitMatchRows } = await sb.from('transaction_splits').select('transaction_id').eq('category_id', txnCategoryFilter);
+    const splitMatchIds = new Set((splitMatchRows || []).map(r => r.transaction_id));
+    data = (data || []).filter(t => t.category_id === txnCategoryFilter || splitMatchIds.has(t.id));
+    document.getElementById('txn-category-filter-name').textContent = txnCategoryFilterName;
+    badgeEl.style.display = 'block';
+  } else {
+    badgeEl.style.display = 'none';
+  }
+
   if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Geen transacties gevonden.</div>'; return; }
 
   const { data: splitCountRows } = await sb.from('transaction_splits').select('transaction_id').in('transaction_id', data.map(t => t.id));
@@ -2007,6 +2155,28 @@ document.getElementById('main-txn-search').addEventListener('input', (e) => {
   mainTxnSearch = e.target.value;
   loadTransactions();
 });
+document.getElementById('txn-category-filter-clear').addEventListener('click', () => {
+  txnCategoryFilter = null;
+  txnCategoryFilterName = '';
+  loadTransactions();
+});
+
+// v3.29: doorklik vanuit een Budget-rij ("🧾 Bekijk transacties") naar dezelfde maand, gefilterd op
+// die categorie. Overige Transacties-filters worden gereset zodat er geen verborgen oud filter
+// (zoekterm, rekening, ongecleared) de resultaten onterecht leeg of onvolledig laat lijken.
+function goToTransactionsForCategory(catId, monthDate) {
+  txnCategoryFilter = catId;
+  txnCategoryFilterName = (catsById[catId] && catsById[catId].name) || '';
+  mainTxnViewMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  mainTxnSearch = '';
+  document.getElementById('main-txn-search').value = '';
+  mainUnclearedOnly = false;
+  transactionAccountFilter.clear();
+  document.querySelectorAll('.account-filter-cb').forEach(cb => cb.checked = false);
+  updateAccountFilterBadge();
+  document.querySelector('nav button[data-tab="transactions"]').click();
+  loadTransactions();
+}
 document.getElementById('main-sort-toggle').addEventListener('click', () => {
   mainSortDesc = !mainSortDesc;
   document.getElementById('main-sort-toggle').textContent = mainSortDesc ? '↑ Nieuwste eerst' : '↓ Oudste eerst';
@@ -2039,57 +2209,33 @@ document.getElementById('zak-txn-type-income').addEventListener('click', () => s
 
 let txnDetailCatLabelToId = {};
 let txnDetailLeafOptions = [];
+let txnDetailCatTree = [];
 let stagedReceiptFiles = [];
 let existingReceipts = [];
 let stagedAankoopFiles = [];
 let existingPossession = null;
 
 async function refreshTxnDetailCategories(scope, currentCategoryId) {
-  const orderedLeaves = await buildLeafCategoryOptions(scope);
-  txnDetailLeafOptions = orderedLeaves;
+  const { tree, leaves } = await buildCategoryData(scope);
+  txnDetailCatTree = tree;
+  txnDetailLeafOptions = leaves;
   txnDetailCatLabelToId = {};
-  orderedLeaves.forEach(l => txnDetailCatLabelToId[l.label] = l.id);
+  leaves.forEach(l => txnDetailCatLabelToId[l.label] = l.id);
   if (currentCategoryId) {
-    const match = orderedLeaves.find(l => l.id === currentCategoryId);
+    const match = leaves.find(l => l.id === currentCategoryId);
     document.getElementById('txn-detail-category-search').value = match ? match.label : '';
   } else {
     document.getElementById('txn-detail-category-search').value = '';
   }
 }
 
-function renderCatPopup(filterText) {
-  const popup = document.getElementById('txn-detail-category-popup');
-  const term = (filterText || '').trim().toLowerCase();
-  const matches = term ? txnDetailLeafOptions.filter(l => l.label.toLowerCase().includes(term)) : txnDetailLeafOptions;
-  let html = `<div class="cat-popup-option cat-popup-empty" data-label="">(geen categorie — Ready to Assign)</div>`;
-  html += matches.length
-    ? matches.map(l => `<div class="cat-popup-option" data-label="${l.label.replace(/"/g, '&quot;')}">${l.label}</div>`).join('')
-    : `<div class="cat-popup-none">Geen categorie gevonden</div>`;
-  popup.innerHTML = html;
-  popup.style.display = 'block';
-  popup.querySelectorAll('.cat-popup-option[data-label]').forEach(opt => {
-    // mousedown (i.p.v. click) vuurt vóór het blur-event van het invoerveld, anders sluit de
-    // popup zich al voordat de tik/klik als selectie wordt geregistreerd.
-    opt.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      const input = document.getElementById('txn-detail-category-search');
-      input.value = opt.getAttribute('data-label');
-      popup.style.display = 'none';
-    });
-  });
-}
-
-const txnDetailCategoryInput = () => document.getElementById('txn-detail-category-search');
-(function () {
-  const inp = txnDetailCategoryInput();
-  const popup = document.getElementById('txn-detail-category-popup');
-  inp.addEventListener('focus', function () {
-    this.select();
-    renderCatPopup('');
-  });
-  inp.addEventListener('input', function () { renderCatPopup(this.value); });
-  inp.addEventListener('blur', () => { setTimeout(() => { popup.style.display = 'none'; }, 150); });
-})();
+attachCategoryPicker(
+  document.getElementById('txn-detail-category-search'),
+  document.getElementById('txn-detail-category-popup'),
+  () => txnDetailCatTree,
+  () => txnDetailLeafOptions,
+  { emptyLabel: '(geen categorie — Ready to Assign)', onSelect: () => {} }
+);
 
 // ---- Split-transacties: meerdere categorieën op één transactie ----
 // Herhalende transacties blijven bewust single-category (niet in scope); "ontkoppel splitsing"
@@ -2116,17 +2262,25 @@ function updateSplitRemaining() {
 
 function renderSplitRows() {
   const wrap = document.getElementById('txn-detail-split-rows');
-  wrap.innerHTML = splitRows.map((row, idx) => `
+  wrap.innerHTML = splitRows.map((row, idx) => {
+    const currentLabel = row.category_id ? (txnDetailLeafOptions.find(l => String(l.id) === String(row.category_id))?.label || '') : '';
+    return `
     <div class="split-row" data-idx="${idx}">
-      <select class="split-cat" data-idx="${idx}">
-        <option value="">(geen categorie)</option>
-        ${txnDetailLeafOptions.map(l => `<option value="${l.id}" ${String(row.category_id) === String(l.id) ? 'selected' : ''}>${l.label}</option>`).join('')}
-      </select>
+      <div class="cat-picker-wrap" style="position:relative; flex:2; min-width:0;">
+        <input type="text" class="split-cat-search" data-idx="${idx}" autocomplete="off" value="${currentLabel.replace(/"/g, '&quot;')}" placeholder="(geen categorie)">
+        <div class="cat-popup split-cat-popup" data-idx="${idx}" style="display:none;"></div>
+      </div>
       <input type="number" step="0.01" class="split-amount" data-idx="${idx}" value="${row.amount || ''}">
       <button type="button" class="split-remove" data-idx="${idx}">×</button>
-    </div>`).join('');
-  wrap.querySelectorAll('.split-cat').forEach(sel => {
-    sel.addEventListener('change', () => { splitRows[Number(sel.dataset.idx)].category_id = sel.value ? Number(sel.value) : null; });
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('.split-cat-search').forEach(inp => {
+    const idx = Number(inp.dataset.idx);
+    const popup = wrap.querySelector(`.split-cat-popup[data-idx="${idx}"]`);
+    attachCategoryPicker(inp, popup, () => txnDetailCatTree, () => txnDetailLeafOptions, {
+      emptyLabel: '(geen categorie)',
+      onSelect: (id) => { splitRows[idx].category_id = id; }
+    });
   });
   wrap.querySelectorAll('.split-amount').forEach(inp => {
     inp.addEventListener('input', () => {
@@ -3322,12 +3476,27 @@ document.getElementById('zak-bulk-move-account').addEventListener('click', () =>
 document.getElementById('zak-bulk-move-date').addEventListener('click', () => bulkMoveDate('zak', loadZakelijk));
 document.getElementById('zak-bulk-delete').addEventListener('click', () => bulkDelete('zak', loadZakelijk));
 
+let zakCatTree = [];
+let zakCatLeaves = [];
+let zakCatLabelToId = {};
+
+attachCategoryPicker(
+  document.getElementById('zak-txn-category-search'),
+  document.getElementById('zak-txn-category-popup'),
+  () => zakCatTree,
+  () => zakCatLeaves,
+  { emptyLabel: '(geen categorie — Ongecategoriseerd)', onSelect: () => {} }
+);
+
 async function openZakTxnModal() {
   const { data: accounts } = await sb.from('accounts').select('id, name').eq('scope', 'zakelijk').order('name');
-  const { data: categories } = await sb.from('categories').select('id, name').eq('scope', 'zakelijk').order('name');
+  const { tree, leaves } = await buildCategoryData('zakelijk');
+  zakCatTree = tree;
+  zakCatLeaves = leaves;
+  zakCatLabelToId = {};
+  leaves.forEach(l => zakCatLabelToId[l.label] = l.id);
   document.getElementById('zak-txn-account').innerHTML = (accounts || []).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
-  document.getElementById('zak-txn-category').innerHTML = '<option value="">Ongecategoriseerd</option>' +
-    (categories || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('zak-txn-category-search').value = '';
   document.getElementById('zak-txn-payee').value = '';
   loadPayeeSuggestions();
   document.getElementById('zak-txn-amount').value = '';
@@ -3346,7 +3515,12 @@ document.getElementById('zak-txn-cancel').addEventListener('click', () => {
 
 document.getElementById('zak-txn-save').addEventListener('click', async () => {
   const account_id = document.getElementById('zak-txn-account').value;
-  const category_id = document.getElementById('zak-txn-category').value || null;
+  const catLabel = document.getElementById('zak-txn-category-search').value.trim();
+  if (catLabel && !zakCatLabelToId[catLabel]) {
+    alert('Kies een bestaande categorie uit de lijst, of laat het veld leeg voor Ongecategoriseerd.');
+    return;
+  }
+  const category_id = catLabel ? zakCatLabelToId[catLabel] : null;
   const payee = document.getElementById('zak-txn-payee').value;
   const rawAmount = parseFloat(document.getElementById('zak-txn-amount').value);
   const amount = isNaN(rawAmount) ? NaN : (getAmountType('zak-txn') === 'income' ? Math.abs(rawAmount) : -Math.abs(rawAmount));
