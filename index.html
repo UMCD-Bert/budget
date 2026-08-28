@@ -128,7 +128,7 @@
   .resterend-inline.positive { color:#222; font-weight:400; }
   .resterend-inline.negative { color:var(--red); font-weight:600; }
   .resterend-inline.neutral { color:#888; }
-  .cat-row-detail { margin:0 0 10px; padding:10px 12px; background:var(--card); border-radius:8px; }
+  .cat-row-detail { margin:0 0 10px; padding:10px 12px; background:var(--card); border-radius:8px; max-width:280px; }
   .cat-numbers input.assign { width:100%; text-align:center; border:1px solid var(--border); border-radius:4px; padding:4px 2px; font-weight:bold; box-sizing:border-box; }
   .progress-bar-track { height:5px; border-radius:3px; background:#e0e0e0; margin-top:6px; overflow:hidden; }
   .progress-bar-fill { height:100%; border-radius:3px; }
@@ -727,7 +727,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.33';
+const APP_VERSION = 'v3.34';
 document.getElementById('version').textContent = APP_VERSION;
 
 function updateTopbarHeightVar() {
@@ -2046,7 +2046,7 @@ async function loadTransactions() {
 
   let query = sb
     .from('transactions')
-    .select('id, date, payee, notitie, amount, cleared, account_id, link_type, categories(name)')
+    .select('id, date, payee, notitie, amount, cleared, account_id, link_type, category_id, categories(name)')
     .order('date', { ascending: false })
     .order('id', { ascending: false });
   const scopedFilterIds = transactionAccountFilter.size > 0
