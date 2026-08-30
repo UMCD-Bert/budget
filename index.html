@@ -236,6 +236,17 @@
       <span id="accounts-total-amount" style="font-weight:bold; font-size:16px;">€ 0,00</span>
     </div>
     <button class="btn-save" id="add-account-btn" style="width:100%; padding:10px; margin-bottom:10px;">+ Rekening toevoegen</button>
+
+    <div style="background:var(--card); border-radius:8px; padding:10px 14px; margin-bottom:10px;">
+      <div style="font-size:12px; color:#666; text-transform:uppercase; letter-spacing:.3px; margin-bottom:8px;">Bankkoppelingen</div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-save" id="bank-auth-asn-btn" style="flex:1; padding:8px; font-size:12px;">🏦 ASN</button>
+        <button class="btn-save" id="bank-auth-rabo-btn" style="flex:1; padding:8px; font-size:12px;">🏦 Rabo</button>
+        <button class="btn-save" id="bank-auth-abnamro-btn" style="flex:1; padding:8px; font-size:12px;">🏦 ABN AMRO</button>
+      </div>
+      <p id="bankkoppeling-status" style="font-size:12px; color:var(--red); margin:6px 0 0;"></p>
+    </div>
+
     <div id="accounts-list"><div class="empty">Nog geen rekeningen.</div></div>
   </div>
 
@@ -729,6 +740,26 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const APP_VERSION = 'v3.36';
 document.getElementById('version').textContent = APP_VERSION;
+
+// ---- Bankkoppelingen (Enable Banking) ----
+async function startBankAuth(bank) {
+  const statusEl = document.getElementById('bankkoppeling-status');
+  statusEl.textContent = '';
+  try {
+    const { data, error } = await sb.functions.invoke('bank-auth-start', { body: { bank } });
+    if (error || !data || data.error) {
+      statusEl.textContent = 'Kon niet starten: ' + (data && data.error ? data.error : (error && error.message) || 'onbekende fout');
+      return;
+    }
+    localStorage.setItem('enable_banking_auth_state', data.state);
+    window.location.href = data.url;
+  } catch (e) {
+    statusEl.textContent = 'Onverwachte fout: ' + e.message;
+  }
+}
+document.getElementById('bank-auth-asn-btn').addEventListener('click', () => startBankAuth('asn'));
+document.getElementById('bank-auth-rabo-btn').addEventListener('click', () => startBankAuth('rabo'));
+document.getElementById('bank-auth-abnamro-btn').addEventListener('click', () => startBankAuth('abnamro'));
 
 function updateTopbarHeightVar() {
   const bar = document.getElementById('app-topbar');
