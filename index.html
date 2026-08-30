@@ -247,6 +247,15 @@
       <p id="bankkoppeling-status" style="font-size:12px; color:var(--red); margin:6px 0 0;"></p>
     </div>
 
+    <div style="background:var(--card); border-radius:8px; padding:10px 14px; margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div style="font-size:12px; color:#666; text-transform:uppercase; letter-spacing:.3px;">Bankreconciliatie</div>
+        <button class="btn-save" id="bank-recon-refresh-btn" style="padding:6px 10px; font-size:12px;">↻ Ververs</button>
+      </div>
+      <p id="bank-recon-status" style="font-size:12px; color:#666; margin:0 0 8px;"></p>
+      <div id="bank-recon-list"></div>
+    </div>
+
     <div id="accounts-list"><div class="empty">Nog geen rekeningen.</div></div>
   </div>
 
@@ -738,7 +747,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.37';
+const APP_VERSION = 'v3.38';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -770,6 +779,133 @@ async function startBankAuth(bank) {
 document.getElementById('bank-auth-asn-btn').addEventListener('click', () => startBankAuth('asn'));
 document.getElementById('bank-auth-rabo-btn').addEventListener('click', () => startBankAuth('rabo'));
 document.getElementById('bank-auth-abnamro-btn').addEventListener('click', () => startBankAuth('abnamro'));
+
+// ---- Bankreconciliatie ----
+// Afwijking t.o.v. de oorspronkelijke afspraak "fetch bij het openen van het scherm":
+// PSD2 staat max. 4 ophaal-verzoeken per rekening per dag toe (bleek pas bij het bouwen
+// van deze functie). Automatisch ophalen bij elk bezoek aan de Rekeningen-tab zou dat
+// budget onnodig snel opsouperen, dus het ophalen zelf blijft achter een expliciete knop;
+// het tonen van de al-opgehaalde lijst gebeurt wel automatisch bij het openen van de tab.
+let pendingStagingClearId = null; // staging-rij die na een succesvolle opslag verwijderd moet worden
+
+async function refreshBankReconciliation() {
+  const statusEl = document.getElementById('bank-recon-status');
+  const btn = document.getElementById('bank-recon-refresh-btn');
+  btn.disabled = true;
+  statusEl.textContent = 'Bezig met ophalen...';
+  try {
+    const { data, error } = await sb.functions.invoke('bank-fetch-transactions', { body: {} });
+    if (error) {
+      let detail = error.message || 'onbekende fout';
+      if (error.context && typeof error.context.json === 'function') {
+        try {
+          const body = await error.context.json();
+          if (body && body.error) detail = body.error;
+        } catch (_) { /* val terug op detail hierboven */ }
+      }
+      statusEl.textContent = 'Ophalen mislukt: ' + detail;
+      return;
+    }
+    const results = (data && data.results) || [];
+    const expired = results.filter(r => r.status === 'consent_expired').length;
+    const rateLimited = results.filter(r => r.status === 'rate_limited').length;
+    const errored = results.filter(r => r.status === 'error').length;
+    const newCount = results.reduce((sum, r) => sum + (r.new_count || 0), 0);
+    let msg = newCount + ' nieuwe transactie(s) opgehaald.';
+    if (expired > 0) msg += ' ' + expired + ' rekening(en) hebben een verlopen koppeling — opnieuw koppelen via 🏦 hierboven.';
+    if (rateLimited > 0) msg += ' ' + rateLimited + ' rekening(en) tijdelijk niet beschikbaar (PSD2-limiet van 4x/dag bereikt, probeer later opnieuw).';
+    if (errored > 0) msg += ' ' + errored + ' rekening(en) gaven een fout.';
+    statusEl.textContent = msg;
+  } catch (e) {
+    statusEl.textContent = 'Onverwachte fout: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    await loadStagingList();
+  }
+}
+
+async function loadStagingList() {
+  const listEl = document.getElementById('bank-recon-list');
+  const { data: rows, error } = await sb.from('bank_transactions_staging')
+    .select('id, account_id, date, amount, payee, raw_description, accounts(name, scope)')
+    .order('date', { ascending: false });
+  if (error) { console.error(error); return; }
+  if (!rows || rows.length === 0) {
+    listEl.innerHTML = '<div class="empty" style="font-size:13px;">Geen openstaande bank-transacties.</div>';
+    return;
+  }
+  listEl.innerHTML = '';
+  rows.forEach(row => {
+    const div = document.createElement('div');
+    div.style.cssText = 'border-top:1px solid var(--border); padding:8px 0; font-size:13px;';
+    const amountColor = Number(row.amount) >= 0 ? 'var(--green)' : 'var(--red)';
+    div.innerHTML = `
+      <div style="display:flex; justify-content:space-between;">
+        <span>${row.date} — ${row.payee || '(onbekende payee)'} <span style="color:#999;">(${row.accounts?.name || ''})</span></span>
+        <span style="color:${amountColor}; font-weight:bold;">${formatEuro(row.amount)}</span>
+      </div>
+      <div style="color:#999; font-size:12px;">${row.raw_description || ''}</div>
+      <div style="display:flex; gap:6px; margin-top:4px;">
+        <button class="btn-save recon-new-btn" style="padding:4px 8px; font-size:12px;">Nieuwe transactie</button>
+        <button class="btn-save recon-existing-btn" style="padding:4px 8px; font-size:12px;">Koppel aan bestaande</button>
+      </div>
+      <div class="recon-existing-list" style="display:none; margin-top:4px; padding-left:8px;"></div>
+    `;
+    div.querySelector('.recon-new-btn').addEventListener('click', () => reconCreateNew(row));
+    div.querySelector('.recon-existing-btn').addEventListener('click', (e) => reconToggleExistingList(row, div));
+    listEl.appendChild(div);
+  });
+}
+
+async function reconCreateNew(row) {
+  await openTxnDetail(null);
+  const scope = row.accounts?.scope || 'prive';
+  // openTxnDetail(null) vult de rekeningkeuzelijst standaard met privé-rekeningen; voor een
+  // zakelijke staging-rij moet die lijst eerst herladen worden, anders bestaat de optie niet.
+  const { data: scopedAccounts } = await sb.from('accounts').select('id, name').eq('scope', scope).order('name');
+  document.getElementById('txn-detail-account').innerHTML = (scopedAccounts || [])
+    .map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  document.getElementById('txn-detail-account').value = row.account_id;
+  await refreshTxnDetailCategories(scope, null);
+  document.getElementById('txn-detail-payee').value = row.payee || '';
+  document.getElementById('txn-detail-amount').value = Math.abs(Number(row.amount)).toFixed(2);
+  setAmountType('txn-detail', Number(row.amount) >= 0 ? 'income' : 'expense');
+  setDateValue('txn-detail-date', row.date);
+  document.getElementById('txn-detail-cleared').checked = true;
+  document.getElementById('txn-detail-notitie').value = row.raw_description || '';
+  pendingStagingClearId = row.id;
+}
+
+async function reconToggleExistingList(row, containerDiv) {
+  const listDiv = containerDiv.querySelector('.recon-existing-list');
+  if (listDiv.style.display === 'block') { listDiv.style.display = 'none'; return; }
+  const { data: candidates, error } = await sb.from('transactions')
+    .select('id, date, payee, amount')
+    .eq('account_id', row.account_id).eq('cleared', false)
+    .order('date', { ascending: false }).limit(50);
+  if (error) { console.error(error); return; }
+  if (!candidates || candidates.length === 0) {
+    listDiv.innerHTML = '<div style="color:#999; font-size:12px;">Geen nog niet-geclearde transacties op deze rekening.</div>';
+  } else {
+    listDiv.innerHTML = '';
+    candidates.forEach(c => {
+      const sameAmount = Math.abs(Number(c.amount) - Number(row.amount)) < 0.005;
+      const btn = document.createElement('button');
+      btn.className = 'btn-save';
+      btn.style.cssText = 'display:block; width:100%; text-align:left; margin:2px 0; padding:4px 8px; font-size:12px;' + (sameAmount ? ' border:2px solid var(--green);' : '');
+      btn.textContent = c.date + ' — ' + (c.payee || '(geen payee)') + ' — ' + formatEuro(c.amount) + (sameAmount ? ' ✓ zelfde bedrag' : '');
+      btn.addEventListener('click', async () => {
+        await openTxnDetail(c.id);
+        document.getElementById('txn-detail-cleared').checked = true;
+        pendingStagingClearId = row.id;
+      });
+      listDiv.appendChild(btn);
+    });
+  }
+  listDiv.style.display = 'block';
+}
+
+document.getElementById('bank-recon-refresh-btn').addEventListener('click', refreshBankReconciliation);
 
 function updateTopbarHeightVar() {
   const bar = document.getElementById('app-topbar');
@@ -816,6 +952,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     if (activeTab === 'zakelijk') loadZakelijk();
     if (activeTab === 'possessions') loadPossessions();
     if (activeTab === 'dashboard') loadDashboard();
+    if (activeTab === 'accounts') loadStagingList();
   });
 });
 
@@ -2686,6 +2823,13 @@ document.getElementById('txn-detail-save-btn').addEventListener('click', async (
   }
 
   document.getElementById('txn-detail-bg').classList.remove('open');
+  if (pendingStagingClearId) {
+    const idToClear = pendingStagingClearId;
+    pendingStagingClearId = null;
+    const { error: clearErr } = await sb.from('bank_transactions_staging').delete().eq('id', idToClear);
+    if (clearErr) console.error(clearErr);
+    if (activeTab === 'accounts') loadStagingList();
+  }
   loadBudget();
   loadAccounts();
   if (isNewTxn) {
@@ -2703,6 +2847,7 @@ document.getElementById('txn-detail-delete-btn').addEventListener('click', async
   if (!confirm('Deze transactie definitief verwijderen?')) return;
   const { error } = await sb.from('transactions').delete().eq('id', currentTxnId);
   if (error) { console.error(error); alert('Verwijderen mislukt.'); return; }
+  pendingStagingClearId = null;
   document.getElementById('txn-detail-bg').classList.remove('open');
   loadBudget();
   loadAccounts();
@@ -2713,6 +2858,7 @@ document.getElementById('txn-detail-delete-btn').addEventListener('click', async
 setupDatePicker('txn-detail-date');
 
 document.getElementById('txn-detail-close').addEventListener('click', () => {
+  pendingStagingClearId = null;
   document.getElementById('txn-detail-bg').classList.remove('open');
 });
 
