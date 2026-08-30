@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bankkoppeling verwerken</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; color: #222; }
+  #error { background: #fdecea; color: #b00020; padding: 12px; border-radius: 8px; margin-top: 16px; }
+  .mapping-row { display: flex; align-items: center; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+  .mapping-row span { flex: 1 1 100%; font-size: 14px; }
+  select { flex: 1; padding: 6px; }
+  button { padding: 6px 14px; }
+  button:disabled { opacity: 0.6; }
+</style>
+</head>
+<body>
+  <div id="app">
+    <p id="status">Bezig met verwerken...</p>
+    <div id="error" style="display:none;"></div>
+    <div id="mapping" style="display:none;"></div>
+  </div>
+
+<script>
+  // Vul hetzelfde in als in index.html van de budget-app:
+  const SUPABASE_URL = "VUL_HIER_IN";
+  const SUPABASE_ANON_KEY = "VUL_HIER_IN";
+
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  function showError(msg) {
+    document.getElementById("status").style.display = "none";
+    const el = document.getElementById("error");
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+
+  function setStatus(msg) {
+    document.getElementById("status").textContent = msg;
+  }
+
+  async function init() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const state = params.get("state");
+    const error = params.get("error");
+    const errorDescription = params.get("error_description");
+
+    if (error) {
+      showError("Autorisatie mislukt of geannuleerd: " + (errorDescription || error));
+      return;
+    }
+    if (!code) {
+      showError("Geen autorisatiecode ontvangen. Probeer het opnieuw vanuit de app.");
+      return;
+    }
+
+    const expectedState = localStorage.getItem("enable_banking_auth_state");
+    if (!state || state !== expectedState) {
+      showError("De autorisatie kon niet worden geverifieerd (state komt niet overeen). Probeer het opnieuw vanuit de app.");
+      return;
+    }
+    localStorage.removeItem("enable_banking_auth_state");
+
+    const { data, error: fnError } = await supabase.functions.invoke("bank-auth-complete", {
+      body: { code },
+    });
+
+    if (fnError) {
+      showError("Kon de koppeling niet afronden: " + fnError.message);
+      return;
+    }
+    if (!data || data.error) {
+      showError("Kon de koppeling niet afronden: " + (data && data.error ? data.error : "onbekende fout"));
+      return;
+    }
+
+    await showMapping(data);
+  }
+
+  async function showMapping(result) {
+    setStatus(
+      "Gevonden rekeningen bij " + (result.aspsp_name || "de bank") + ": koppel elke rekening hieronder."
+    );
+
+    const { data: localAccounts, error: fetchError } = await supabase
+      .from("accounts")
+      .select("id,name,bank,scope")
+      .is("enable_banking_account_uid", null);
+
+    if (fetchError) {
+      showError("Kon lokale rekeningen niet ophalen: " + fetchError.message);
+      return;
+    }
+
+    const mappingDiv = document.getElementById("mapping");
+    mappingDiv.style.display = "block";
+    mappingDiv.innerHTML = "";
+
+    result.accounts.forEach((acc) => {
+      const row = document.createElement("div");
+      row.className = "mapping-row";
+
+      const label = document.createElement("span");
+      label.textContent =
+        (acc.name || "Rekening") + " (" + (acc.iban || acc.uid) + (acc.currency ? ", " + acc.currency : "") + ")";
+      row.appendChild(label);
+
+      const select = document.createElement("select");
+      select.dataset.uid = acc.uid;
+      const emptyOpt = document.createElement("option");
+      emptyOpt.value = "";
+      emptyOpt.textContent = "— kies rekening —";
+      select.appendChild(emptyOpt);
+      (localAccounts || []).forEach((la) => {
+        const opt = document.createElement("option");
+        opt.value = la.id;
+        opt.textContent = la.name + " (" + la.bank + ", " + la.scope + ")";
+        select.appendChild(opt);
+      });
+      row.appendChild(select);
+
+      const btn = document.createElement("button");
+      btn.textContent = "Koppel";
+      btn.addEventListener("click", () => confirmMapping(select, acc.uid, result.session_id, btn));
+      row.appendChild(btn);
+
+      mappingDiv.appendChild(row);
+    });
+
+    if (result.accounts.length === 0) {
+      const p = document.createElement("p");
+      p.textContent = "Geen rekeningen gevonden in de respons van de bank.";
+      mappingDiv.appendChild(p);
+    }
+  }
+
+  async function confirmMapping(select, accountUid, sessionId, btn) {
+    const chosenId = select.value;
+    if (!chosenId) {
+      alert("Kies eerst een rekening.");
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Bezig...";
+    const { error } = await supabase
+      .from("accounts")
+      .update({ enable_banking_session_id: sessionId, enable_banking_account_uid: accountUid })
+      .eq("id", chosenId);
+    if (error) {
+      alert("Opslaan mislukt: " + error.message);
+      btn.disabled = false;
+      btn.textContent = "Koppel";
+      return;
+    }
+    btn.textContent = "\u2705 Gekoppeld";
+    select.disabled = true;
+  }
+
+  window.__initPromise = init(); // expliciet blootgesteld zodat dit deterministisch getest kan worden
+</script>
+</body>
+</html>
