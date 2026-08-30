@@ -738,7 +738,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.36';
+const APP_VERSION = 'v3.37';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -752,6 +752,7 @@ async function startBankAuth(bank) {
       return;
     }
     localStorage.setItem('enable_banking_auth_state', data.state);
+    localStorage.setItem('enable_banking_auth_bank', bank);
     window.location.href = data.url;
   } catch (e) {
     statusEl.textContent = 'Onverwachte fout: ' + e.message;
@@ -2810,7 +2811,7 @@ document.getElementById('poss-save').addEventListener('click', async () => {
 loadPossessions();
 
 async function loadAccounts() {
-  const { data, error } = await sb.from('accounts').select('*').order('name');
+  const { data, error } = await sb.from('accounts').select('id, name, type, starting_balance, closed, sort_order, created_at, scope, bank').order('name');
   if (error) { console.error(error); return; }
   const el = document.getElementById('accounts-list');
   const totalEl = document.getElementById('accounts-total-amount');
@@ -2860,7 +2861,7 @@ let acctDetailMonthOffset = 0;
 async function openAccountDetail(accountId) {
   currentAccountId = accountId;
   acctDetailMonthOffset = 0;
-  const { data: acc, error } = await sb.from('accounts').select('*').eq('id', accountId).single();
+  const { data: acc, error } = await sb.from('accounts').select('id, name, type, starting_balance, closed, sort_order, created_at, scope, bank').eq('id', accountId).single();
   if (error) { console.error(error); return; }
 
   document.getElementById('acc-detail-name').value = acc.name || '';

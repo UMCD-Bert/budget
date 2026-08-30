@@ -17,6 +17,7 @@
 </head>
 <body>
   <div id="app">
+    <p><a href="index.html" style="font-size:13px;">&larr; Terug naar de app</a></p>
     <p id="status">Bezig met verwerken...</p>
     <div id="error" style="display:none;"></div>
     <div id="mapping" style="display:none;"></div>
@@ -63,6 +64,12 @@
     }
     localStorage.removeItem("enable_banking_auth_state");
 
+    // Welke bank-knop is gebruikt om deze flow te starten (asn/rabo/abnamro) — voor
+    // het filteren van de kandidatenlijst hieronder. Kan ontbreken (bv. oud tabblad);
+    // in dat geval tonen we alle betaalrekeningen ongefilterd i.p.v. de flow te blokkeren.
+    const startedBank = localStorage.getItem("enable_banking_auth_bank");
+    localStorage.removeItem("enable_banking_auth_bank");
+
     const { data, error: fnError } = await supabase.functions.invoke("bank-auth-complete", {
       body: { code },
     });
@@ -76,22 +83,35 @@
       return;
     }
 
-    await showMapping(data);
+    await showMapping(data, startedBank);
   }
 
-  async function showMapping(result) {
+  // Vertaalt de flow-key (zoals gebruikt in index.html/bank-auth-start) naar de
+  // waarde die in accounts.bank staat. Moet in sync blijven met ASPSPS in
+  // bank-auth-start en met de bank-select-opties van de app.
+  const BANK_KEY_TO_ACCOUNT_BANK = { asn: "asn", rabo: "rabobank", abnamro: "abnamro" };
+
+  async function showMapping(result, startedBank) {
     setStatus(
       "Gevonden rekeningen bij " + (result.aspsp_name || "de bank") + ": koppel elke rekening hieronder."
     );
 
-    const { data: localAccounts, error: fetchError } = await supabase
-      .from("accounts")
-      .select("id,name,bank,scope")
-      .is("enable_banking_account_uid", null);
+    let query = supabase.from("accounts").select("id,name,bank,scope,type,enable_banking_account_uid").eq("type", "checking");
+    const expectedAccountBank = startedBank ? BANK_KEY_TO_ACCOUNT_BANK[startedBank] : null;
+    if (expectedAccountBank) {
+      query = query.eq("bank", expectedAccountBank);
+    }
+    const { data: localAccounts, error: fetchError } = await query.order("name");
 
     if (fetchError) {
       showError("Kon lokale rekeningen niet ophalen: " + fetchError.message);
       return;
+    }
+    if (!expectedAccountBank) {
+      setStatus(
+        "Gevonden rekeningen bij " + (result.aspsp_name || "de bank") +
+          ". Let op: kon de gestarte bank niet herkennen, dus hieronder staan alle betaalrekeningen — kies zorgvuldig de juiste."
+      );
     }
 
     const mappingDiv = document.getElementById("mapping");
@@ -115,8 +135,9 @@
       select.appendChild(emptyOpt);
       (localAccounts || []).forEach((la) => {
         const opt = document.createElement("option");
+        const alreadyLinked = !!la.enable_banking_account_uid;
         opt.value = la.id;
-        opt.textContent = la.name + " (" + la.bank + ", " + la.scope + ")";
+        opt.textContent = la.name + " (" + la.bank + ", " + la.scope + ")" + (alreadyLinked ? " — al gekoppeld, opnieuw koppelen ververst" : "");
         select.appendChild(opt);
       });
       row.appendChild(select);
