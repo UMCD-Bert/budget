@@ -748,7 +748,16 @@ async function startBankAuth(bank) {
   try {
     const { data, error } = await sb.functions.invoke('bank-auth-start', { body: { bank } });
     if (error || !data || data.error) {
-      statusEl.textContent = 'Kon niet starten: ' + (data && data.error ? data.error : (error && error.message) || 'onbekende fout');
+      let detail = data && data.error ? data.error : (error && error.message) || 'onbekende fout';
+      // supabase-js geeft bij een non-2xx status alleen een generieke melding in error.message;
+      // de eigenlijke reden staat in de response-body (error.context), die we hier alsnog uitlezen.
+      if (error && error.context && typeof error.context.json === 'function') {
+        try {
+          const body = await error.context.json();
+          if (body && body.error) detail = body.error + (body.detail ? ' — ' + body.detail : '');
+        } catch (_) { /* body was geen JSON, val terug op detail hierboven */ }
+      }
+      statusEl.textContent = 'Kon niet starten: ' + detail;
       return;
     }
     localStorage.setItem('enable_banking_auth_state', data.state);

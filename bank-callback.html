@@ -75,7 +75,14 @@
     });
 
     if (fnError) {
-      showError("Kon de koppeling niet afronden: " + fnError.message);
+      let detail = fnError.message || "onbekende fout";
+      if (fnError.context && typeof fnError.context.json === "function") {
+        try {
+          const body = await fnError.context.json();
+          if (body && body.error) detail = body.error + (body.detail ? " — " + body.detail : "");
+        } catch (_) { /* body was geen JSON, val terug op detail hierboven */ }
+      }
+      showError("Kon de koppeling niet afronden: " + detail);
       return;
     }
     if (!data || data.error) {
