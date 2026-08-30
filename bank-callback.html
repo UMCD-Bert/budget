@@ -4,7 +4,18 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Bankkoppeling verwerken</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // Staat los van (en vóór) het CDN-script, zodat dit ook werkt als dat script
+  // niet laadt — bv. in de ingebouwde browser van een bank-app.
+  function showFatalError(msg) {
+    var statusEl = document.getElementById("status");
+    if (statusEl) statusEl.style.display = "none";
+    var el = document.getElementById("error");
+    if (el) { el.textContent = msg; el.style.display = "block"; }
+  }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+        onerror="showFatalError('Kon een benodigd script niet laden (supabase-js). Dit gebeurt soms in de ingebouwde browser van een bank-app. Probeer de link te openen in Safari/Chrome, of ga terug naar de app en probeer opnieuw.')"></script>
 <style>
   body { font-family: -apple-system, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; color: #222; }
   #error { background: #fdecea; color: #b00020; padding: 12px; border-radius: 8px; margin-top: 16px; }
@@ -24,10 +35,14 @@
   </div>
 
 <script>
+try {
   // Vul hetzelfde in als in index.html van de budget-app:
   const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 
+  if (!window.supabase) {
+    throw new Error("supabase-js is niet beschikbaar (script niet geladen)");
+  }
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   function showError(msg) {
@@ -42,6 +57,7 @@
   }
 
   async function init() {
+   try {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const state = params.get("state");
@@ -91,6 +107,9 @@
     }
 
     await showMapping(data, startedBank);
+   } catch (e) {
+     showError("Onverwachte fout: " + (e && e.message ? e.message : String(e)));
+   }
   }
 
   // Vertaalt de flow-key (zoals gebruikt in index.html/bank-auth-start) naar de
@@ -187,6 +206,10 @@
   }
 
   window.__initPromise = init(); // expliciet blootgesteld zodat dit deterministisch getest kan worden
+  window.confirmMapping = confirmMapping; // idem
+} catch (e) {
+  showFatalError("Onverwachte fout bij het laden van de pagina: " + (e && e.message ? e.message : String(e)) + ". Herlaad de pagina, of ga terug naar de app en probeer het opnieuw.");
+}
 </script>
 </body>
 </html>
