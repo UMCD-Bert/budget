@@ -149,8 +149,8 @@
   .amount-with-steppers input { flex:1; }
   .stepper-btn { width:44px; height:38px; flex-shrink:0; border:1px solid var(--border); border-radius:6px; background:#fff; font-size:14px; cursor:pointer; touch-action:manipulation; }
   .date-picker-wrap { position:relative; }
-  .dp-popup { position:absolute; z-index:20; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.15); padding:8px; width:230px; top:100%; left:0; margin-top:4px; }
-  .cat-popup { position:absolute; z-index:20; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.15); top:100%; left:0; right:0; margin-top:4px; max-height:260px; overflow-y:auto; }
+  .dp-popup { position:absolute; z-index:50; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.15); padding:8px; width:230px; top:100%; left:0; margin-top:4px; }
+  .cat-popup { position:absolute; z-index:50; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.15); top:100%; left:0; right:0; margin-top:4px; max-height:260px; overflow-y:auto; }
   .cat-popup-option { padding:10px 12px; cursor:pointer; border-bottom:1px solid #f0f0f0; touch-action:manipulation; }
   .cat-popup-option:last-child { border-bottom:none; }
   .cat-popup-option.cat-popup-empty { color:#888; font-style:italic; }
@@ -268,8 +268,15 @@
       <div style="text-align:left; margin-bottom:6px; display:flex; gap:8px; align-items:center;">
         <button class="select-toggle-btn" id="main-select-toggle">Selecteren</button>
         <button class="select-toggle-btn" id="account-filter-toggle">Filter op rekening</button>
+        <button class="select-toggle-btn" id="txn-category-filter-toggle">Filter op categorie</button>
         <button class="select-toggle-btn" id="main-sort-toggle" title="Sorteervolgorde omdraaien">↑ Nieuwste eerst</button>
         <button class="select-toggle-btn" id="recurring-overview-btn">Toekomstige transacties</button>
+      </div>
+      <div id="txn-category-filter-picker-panel" style="display:none; background:var(--card); border-radius:8px; padding:10px; margin-bottom:8px;">
+        <div class="cat-picker-wrap" style="position:relative;">
+          <input type="text" id="txn-category-filter-search" autocomplete="off" placeholder="Typ om te zoeken">
+          <div class="cat-popup" id="txn-category-filter-popup" style="display:none;"></div>
+        </div>
       </div>
       <div id="txn-category-filter-badge" style="display:none; margin-bottom:6px;">
         <span class="select-toggle-btn" style="display:inline-flex; align-items:center; gap:6px;">
@@ -440,6 +447,7 @@
       <input type="hidden" id="zak-txn-date">
       <div class="dp-popup" id="zak-txn-date-popup" style="display:none;"></div>
     </div>
+    <label style="margin-top:8px;"><input type="checkbox" id="zak-txn-cleared" style="width:auto;"> Bevestigd</label>
     <div class="actions">
       <button class="btn-cancel" id="zak-txn-cancel">Annuleren</button>
       <button class="btn-save" id="zak-txn-save">Opslaan</button>
@@ -764,7 +772,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.40';
+const APP_VERSION = 'v3.41';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1096,6 +1104,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     if (previousTab === 'transactions' && activeTab !== 'transactions' && txnCategoryFilter !== null) {
       txnCategoryFilter = null;
       txnCategoryFilterName = '';
+      updateTxnCategoryFilterButtonLabel();
       loadTransactions();
     }
     if (activeTab === 'zakelijk') loadZakelijk();
@@ -1128,6 +1137,37 @@ function setDateValue(hiddenId, iso) {
   const display = document.getElementById(hiddenId + '-display');
   hidden.value = iso;
   if (display) display.value = formatDateNL(iso);
+}
+
+// v3.41: popups (datumkiezer, categoriekiezer) stonden position:absolute t.o.v. hun eigen
+// invoerveld. Zolang modals geen hoogtebeperking hadden werkte dat prima, maar sinds .modal
+// een max-height+overflow-y heeft (v3.40) werd een popup die daarbuiten viel afgesneden door
+// de modal zelf. Deze functie maakt de popup i.p.v. daarvan position:fixed t.o.v. het scherm,
+// berekend op basis van waar het invoerveld op dat moment staat — ontsnapt zo aan het
+// scroll-/overflow-gebied van elke ouder.
+function positionPopupFixed(popup, anchorEl, opts) {
+  opts = opts || {};
+  const rect = anchorEl.getBoundingClientRect();
+  popup.style.position = 'fixed';
+  popup.style.top = (rect.bottom + 4) + 'px';
+  popup.style.left = rect.left + 'px';
+  popup.style.right = 'auto';
+  popup.style.marginTop = '0';
+  if (opts.matchWidth) popup.style.width = rect.width + 'px';
+  requestAnimationFrame(() => {
+    const popupRect = popup.getBoundingClientRect();
+    if (popupRect.right > window.innerWidth - 4) {
+      popup.style.left = Math.max(4, window.innerWidth - popupRect.width - 4) + 'px';
+    }
+    if (popupRect.bottom > window.innerHeight - 4) {
+      popup.style.top = Math.max(4, rect.top - popupRect.height - 4) + 'px';
+    }
+  });
+  // Bij scrollen (bv. binnen een scrollende modal) verliest de fixed-popup zijn relatie met
+  // het invoerveld — dan gewoon sluiten i.p.v. los in de lucht laten hangen.
+  if (popup._closeOnScroll) document.removeEventListener('scroll', popup._closeOnScroll, true);
+  popup._closeOnScroll = () => { popup.style.display = 'none'; };
+  document.addEventListener('scroll', popup._closeOnScroll, true);
 }
 
 function setupDatePicker(hiddenId) {
@@ -1179,7 +1219,9 @@ function setupDatePicker(hiddenId) {
     e.stopPropagation();
     viewDate = hidden.value ? new Date(hidden.value + 'T00:00:00') : new Date();
     render();
-    popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
+    const opening = popup.style.display === 'none';
+    popup.style.display = opening ? 'block' : 'none';
+    if (opening) positionPopupFixed(popup, display);
   });
   document.addEventListener('click', (e) => {
     if (popup.style.display !== 'none' && !popup.contains(e.target) && e.target !== display) popup.style.display = 'none';
@@ -1514,6 +1556,49 @@ document.getElementById('account-filter-clear').addEventListener('click', () => 
   document.querySelectorAll('.account-filter-cb').forEach(cb => cb.checked = false);
   loadTransactions();
   updateAccountFilterBadge();
+});
+
+// v3.41: "Filter op categorie"-knop — zelfde soort toggle+paneel als "Filter op rekening",
+// maar categorie is bewust single-select (net als de al-bestaande Budget-doorklik), dus met de
+// bekende zoek-en-kies-categoriewidget i.p.v. een aanvinklijst. Hergebruikt bewust de bestaande
+// txnCategoryFilter/txnCategoryFilterName-state en de badge/split-matching-logica in
+// loadTransactions() — daar wijzigt niets aan, dit is alleen een extra manier om diezelfde
+// filter te zetten.
+let txnCategoryFilterTree = null, txnCategoryFilterLeaves = [];
+async function ensureTxnCategoryFilterData() {
+  if (txnCategoryFilterTree) return;
+  const { tree, leaves } = await buildCategoryData('prive');
+  txnCategoryFilterTree = tree;
+  txnCategoryFilterLeaves = leaves;
+}
+attachCategoryPicker(
+  document.getElementById('txn-category-filter-search'),
+  document.getElementById('txn-category-filter-popup'),
+  () => txnCategoryFilterTree,
+  () => txnCategoryFilterLeaves,
+  {
+    emptyLabel: 'Filter wissen',
+    onSelect: (id, label) => {
+      txnCategoryFilter = id;
+      txnCategoryFilterName = label || '';
+      document.getElementById('txn-category-filter-picker-panel').style.display = 'none';
+      document.getElementById('txn-category-filter-search').value = '';
+      updateTxnCategoryFilterButtonLabel();
+      loadTransactions();
+    }
+  }
+);
+function updateTxnCategoryFilterButtonLabel() {
+  const btn = document.getElementById('txn-category-filter-toggle');
+  btn.textContent = txnCategoryFilter !== null ? `Filter op categorie: ${txnCategoryFilterName}` : 'Filter op categorie';
+}
+document.getElementById('txn-category-filter-toggle').addEventListener('click', async () => {
+  const panel = document.getElementById('txn-category-filter-picker-panel');
+  const isOpen = panel.style.display !== 'none';
+  if (isOpen) { panel.style.display = 'none'; return; }
+  await ensureTxnCategoryFilterData();
+  panel.style.display = 'block';
+  document.getElementById('txn-category-filter-search').focus();
 });
 
 async function openZakAccountFilterPanel() {
@@ -2183,6 +2268,7 @@ function attachCategoryPicker(input, popup, getTree, getLeaves, opts) {
     }
     popup.innerHTML = html;
     popup.style.display = 'block';
+    positionPopupFixed(popup, input, { matchWidth: true });
     wireRows();
   }
 
@@ -2475,6 +2561,7 @@ document.getElementById('main-txn-search').addEventListener('input', (e) => {
 document.getElementById('txn-category-filter-clear').addEventListener('click', () => {
   txnCategoryFilter = null;
   txnCategoryFilterName = '';
+  updateTxnCategoryFilterButtonLabel();
   loadTransactions();
 });
 
@@ -2484,6 +2571,7 @@ document.getElementById('txn-category-filter-clear').addEventListener('click', (
 function goToTransactionsForCategory(catId, monthDate) {
   txnCategoryFilter = catId;
   txnCategoryFilterName = (catsById[catId] && catsById[catId].name) || '';
+  updateTxnCategoryFilterButtonLabel();
   mainTxnViewMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
   mainTxnSearch = '';
   document.getElementById('main-txn-search').value = '';
@@ -3847,6 +3935,7 @@ async function openZakTxnModal() {
   document.getElementById('zak-txn-amount').value = '';
   setAmountType('zak-txn', 'expense');
   setDateValue('zak-txn-date', toLocalISODate(new Date()));
+  document.getElementById('zak-txn-cleared').checked = true;
   if (!accounts || accounts.length === 0) {
     alert('Nog geen zakelijke rekening. Voeg er eerst één toe via Supabase (accounts-tabel, type = \'zakelijk\').');
     return;
@@ -3870,9 +3959,10 @@ document.getElementById('zak-txn-save').addEventListener('click', async () => {
   const rawAmount = parseFloat(document.getElementById('zak-txn-amount').value);
   const amount = isNaN(rawAmount) ? NaN : (getAmountType('zak-txn') === 'income' ? Math.abs(rawAmount) : -Math.abs(rawAmount));
   const date = document.getElementById('zak-txn-date').value;
+  const cleared = document.getElementById('zak-txn-cleared').checked;
   if (!account_id || isNaN(amount) || !date) { alert('Vul rekening, bedrag en datum in.'); return; }
 
-  const { error } = await sb.from('transactions').insert({ account_id, category_id, payee, amount, date });
+  const { error } = await sb.from('transactions').insert({ account_id, category_id, payee, amount, date, cleared });
   if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
   document.getElementById('zak-txn-modal-bg').classList.remove('open');
   loadZakelijk();
