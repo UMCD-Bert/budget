@@ -45,7 +45,7 @@
   .fab { position:fixed; bottom:20px; right:20px; background:var(--green); color:#fff; border:none; border-radius:50%; width:52px; height:52px; font-size:26px; box-shadow:0 2px 6px rgba(0,0,0,.3); }
   .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); align-items:center; justify-content:center; z-index:40; }
   .modal-bg.open { display:flex; }
-  .modal { background:#fff; border-radius:8px; padding:16px; width:90%; max-width:400px; }
+  .modal { background:#fff; border-radius:8px; padding:16px; width:90%; max-width:400px; max-height:90vh; overflow-y:auto; }
   .modal label { display:block; font-size:12px; color:#666; margin-top:10px; }
   .modal input, .modal select { width:100%; padding:8px; border:1px solid var(--border); border-radius:4px; margin-top:2px; font-size:16px; }
   input, select, textarea { font-size:16px; }
@@ -240,9 +240,9 @@
     <div style="background:var(--card); border-radius:8px; padding:10px 14px; margin-bottom:10px;">
       <div style="font-size:12px; color:#666; text-transform:uppercase; letter-spacing:.3px; margin-bottom:8px;">Bankkoppelingen</div>
       <div style="display:flex; gap:8px;">
-        <button class="btn-save" id="bank-auth-asn-btn" style="flex:1; padding:8px; font-size:12px;">🏦 ASN</button>
-        <button class="btn-save" id="bank-auth-rabo-btn" style="flex:1; padding:8px; font-size:12px;">🏦 Rabo</button>
-        <button class="btn-save" id="bank-auth-abnamro-btn" style="flex:1; padding:8px; font-size:12px;">🏦 ABN AMRO</button>
+        <button class="btn-save" id="bank-auth-asn-btn" style="flex:1; padding:8px; font-size:12px;">🏦 ASN<span class="bank-link-indicator" data-bank="asn"></span></button>
+        <button class="btn-save" id="bank-auth-rabo-btn" style="flex:1; padding:8px; font-size:12px;">🏦 Rabo<span class="bank-link-indicator" data-bank="rabo"></span></button>
+        <button class="btn-save" id="bank-auth-abnamro-btn" style="flex:1; padding:8px; font-size:12px;">🏦 ABN AMRO<span class="bank-link-indicator" data-bank="abnamro"></span></button>
       </div>
       <p id="bankkoppeling-status" style="font-size:12px; color:var(--red); margin:6px 0 0;"></p>
     </div>
@@ -333,10 +333,16 @@
 
     <div style="background:var(--card); border-radius:8px; padding:10px 14px; margin-top:16px;">
       <div style="font-size:12px; color:#666; text-transform:uppercase; letter-spacing:.3px; margin-bottom:8px;">Naam-aliassen (voor bank-import)</div>
-      <p style="font-size:12px; color:#888; margin:0 0 8px;">Als een deel van de bankomschrijving dit patroon bevat, wordt de naam-suggestie het alias in plaats van de standaard-afleiding.</p>
-      <div style="display:flex; gap:6px; margin-bottom:8px;">
+      <p style="font-size:12px; color:#888; margin:0 0 8px;">Als een deel van de bankomschrijving dit patroon bevat, wordt de naam-suggestie het alias in plaats van de standaard-afleiding. Voorkeurscategorie is optioneel (alleen privé-categorieën) en wordt dan ook meteen voorgesteld.</p>
+      <div style="display:flex; gap:6px; margin-bottom:6px;">
         <input type="text" id="payee-alias-pattern" placeholder="Patroon (bv. BCK*PLUS)" style="flex:1; min-width:0;">
         <input type="text" id="payee-alias-value" placeholder="Alias (bv. Plus)" style="flex:1; min-width:0;">
+      </div>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <div class="cat-picker-wrap" style="position:relative; flex:1; min-width:0;">
+          <input type="text" id="payee-alias-category-search" autocomplete="off" placeholder="Voorkeurscategorie (optioneel)">
+          <div class="cat-popup" id="payee-alias-category-popup" style="display:none;"></div>
+        </div>
         <button class="btn-save" id="payee-alias-add-btn" style="padding:6px 12px;">+ Toevoegen</button>
       </div>
       <div id="payee-alias-list"></div>
@@ -415,13 +421,13 @@
     <h3 style="margin-top:0;">Nieuwe zakelijke transactie</h3>
     <label>Rekening</label>
     <select id="zak-txn-account"></select>
+    <label>Naam</label>
+    <input type="text" id="zak-txn-payee" list="payee-datalist" placeholder="Bijv. Klant X">
     <label>Categorie</label>
     <div class="cat-picker-wrap" style="position:relative;">
       <input type="text" id="zak-txn-category-search" autocomplete="off" placeholder="Typ om te zoeken, of laat leeg voor Ongecategoriseerd">
       <div class="cat-popup" id="zak-txn-category-popup" style="display:none;"></div>
     </div>
-    <label>Naam</label>
-    <input type="text" id="zak-txn-payee" list="payee-datalist" placeholder="Bijv. Klant X">
     <label>Bedrag</label>
     <div class="amount-type-toggle">
       <button type="button" id="zak-txn-type-expense" class="active-expense">Uitgave</button>
@@ -758,7 +764,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.39';
+const APP_VERSION = 'v3.40';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -839,6 +845,7 @@ async function loadStagingList() {
   const listEl = document.getElementById('bank-recon-list');
   const { data: rows, error } = await sb.from('bank_transactions_staging')
     .select('id, account_id, date, amount, payee, raw_description, accounts(name, scope)')
+    .is('processed_at', null)
     .order('date', { ascending: false });
   if (error) { console.error(error); return; }
   if (!rows || rows.length === 0) {
@@ -859,11 +866,13 @@ async function loadStagingList() {
       <div style="display:flex; gap:6px; margin-top:4px;">
         <button class="btn-save recon-new-btn" style="padding:4px 8px; font-size:12px;">Nieuwe transactie</button>
         <button class="btn-save recon-existing-btn" style="padding:4px 8px; font-size:12px;">Koppel aan bestaande</button>
+        <button class="btn-cancel recon-ignore-btn" style="padding:4px 8px; font-size:12px;">Negeren</button>
       </div>
       <div class="recon-existing-list" style="display:none; margin-top:4px; padding-left:8px;"></div>
     `;
     div.querySelector('.recon-new-btn').addEventListener('click', () => reconCreateNew(row));
     div.querySelector('.recon-existing-btn').addEventListener('click', (e) => reconToggleExistingList(row, div));
+    div.querySelector('.recon-ignore-btn').addEventListener('click', () => reconIgnoreRow(row.id));
     listEl.appendChild(div);
   });
 }
@@ -875,7 +884,7 @@ function invalidatePayeeAliasesCache() { payeeAliasesCache = null; }
 
 async function loadPayeeAliases() {
   if (payeeAliasesCache) return payeeAliasesCache;
-  const { data, error } = await sb.from('payee_aliases').select('id, pattern, alias').order('pattern');
+  const { data, error } = await sb.from('payee_aliases').select('id, pattern, alias, category_id').order('pattern');
   if (error) { console.error(error); return []; }
   payeeAliasesCache = data || [];
   return payeeAliasesCache;
@@ -896,19 +905,48 @@ async function suggestPayeeName(rawDescription) {
   return stripTrailingAccountNumber(beforeGt);
 }
 
+async function suggestPayeeCategory(rawDescription) {
+  if (!rawDescription) return null;
+  const aliases = await loadPayeeAliases();
+  const lower = rawDescription.toLowerCase();
+  const match = aliases.find(a => a.pattern && lower.includes(a.pattern.toLowerCase()));
+  return match ? (match.category_id || null) : null;
+}
+
+let aliasCatTree = null, aliasCatLeaves = [], aliasCatLabelToId = {};
+async function ensureAliasCategoryData() {
+  if (aliasCatTree) return;
+  const { tree, leaves } = await buildCategoryData('prive');
+  aliasCatTree = tree;
+  aliasCatLeaves = leaves;
+  aliasCatLabelToId = {};
+  leaves.forEach(l => aliasCatLabelToId[l.label] = l.id);
+}
+attachCategoryPicker(
+  document.getElementById('payee-alias-category-search'),
+  document.getElementById('payee-alias-category-popup'),
+  () => aliasCatTree,
+  () => aliasCatLeaves,
+  { emptyLabel: '(geen voorkeurscategorie)', onSelect: () => {} }
+);
+
 async function loadPayeeAliasList() {
+  await ensureAliasCategoryData();
   const listEl = document.getElementById('payee-alias-list');
   const aliases = await loadPayeeAliases();
   if (aliases.length === 0) {
     listEl.innerHTML = '<div class="empty" style="font-size:13px;">Nog geen aliassen.</div>';
     return;
   }
-  listEl.innerHTML = aliases.map(a => `
+  listEl.innerHTML = aliases.map(a => {
+    const catLabel = a.category_id ? (aliasCatLeaves.find(l => l.id === a.category_id)?.label || '') : '';
+    return `
     <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-top:1px solid var(--border); font-size:13px;">
-      <span>${a.pattern} → ${a.alias}</span>
+      <span>${a.pattern} → ${a.alias}${catLabel ? ' <span style="color:#999;">(' + catLabel + ')</span>' : ''}</span>
       <button type="button" class="payee-alias-delete-btn" data-id="${a.id}" style="border:none; background:none; color:var(--red); font-weight:bold; cursor:pointer;">×</button>
     </div>
-  `).join('');
+  `;
+  }).join('');
   listEl.querySelectorAll('.payee-alias-delete-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const { error } = await sb.from('payee_aliases').delete().eq('id', btn.dataset.id);
@@ -923,13 +961,26 @@ document.getElementById('payee-alias-add-btn').addEventListener('click', async (
   const pattern = document.getElementById('payee-alias-pattern').value.trim();
   const alias = document.getElementById('payee-alias-value').value.trim();
   if (!pattern || !alias) { alert('Vul zowel een patroon als een alias in.'); return; }
-  const { error } = await sb.from('payee_aliases').insert({ pattern, alias });
+  const catLabel = document.getElementById('payee-alias-category-search').value.trim();
+  if (catLabel && !aliasCatLabelToId[catLabel]) {
+    alert('Kies een bestaande categorie uit de lijst, of laat het veld leeg.');
+    return;
+  }
+  const category_id = catLabel ? aliasCatLabelToId[catLabel] : null;
+  const { error } = await sb.from('payee_aliases').insert({ pattern, alias, category_id });
   if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
   document.getElementById('payee-alias-pattern').value = '';
   document.getElementById('payee-alias-value').value = '';
+  document.getElementById('payee-alias-category-search').value = '';
   invalidatePayeeAliasesCache();
   loadPayeeAliasList();
 });
+
+async function reconIgnoreRow(id) {
+  const { error } = await sb.from('bank_transactions_staging').update({ processed_at: new Date().toISOString() }).eq('id', id);
+  if (error) { console.error(error); alert('Negeren mislukt.'); return; }
+  loadStagingList();
+}
 
 async function reconCreateNew(row) {
   await openTxnDetail(null);
@@ -940,8 +991,16 @@ async function reconCreateNew(row) {
   document.getElementById('txn-detail-account').innerHTML = (scopedAccounts || [])
     .map(a => `<option value="${a.id}">${a.name}</option>`).join('');
   document.getElementById('txn-detail-account').value = row.account_id;
-  await refreshTxnDetailCategories(scope, null);
-  document.getElementById('txn-detail-payee').value = row.payee || await suggestPayeeName(row.raw_description);
+  let suggestedCategoryId = null;
+  if (!row.payee) {
+    document.getElementById('txn-detail-payee').value = await suggestPayeeName(row.raw_description);
+    // Voorkeurscategorie komt alleen uit een alias-match (aliassen zijn privé-categorieën);
+    // buildCategoryData(scope) hieronder bevat 'm dan ook alleen als scope 'prive' is.
+    suggestedCategoryId = await suggestPayeeCategory(row.raw_description);
+  } else {
+    document.getElementById('txn-detail-payee').value = row.payee;
+  }
+  await refreshTxnDetailCategories(scope, suggestedCategoryId);
   document.getElementById('txn-detail-amount').value = Math.abs(Number(row.amount)).toFixed(2);
   setAmountType('txn-detail', Number(row.amount) >= 0 ? 'income' : 'expense');
   setDateValue('txn-detail-date', row.date);
@@ -982,6 +1041,20 @@ async function reconToggleExistingList(row, containerDiv) {
 }
 
 document.getElementById('bank-recon-refresh-btn').addEventListener('click', refreshBankReconciliation);
+
+// Backlog-item: koppelsymbool bij de bankkoppel-knoppen tonen als er minstens één
+// betaalrekening voor die bank een echte koppeling heeft.
+const BANK_KEY_TO_ACCOUNT_BANK_STATUS = { asn: 'asn', rabo: 'rabobank', abnamro: 'abnamro' };
+async function updateBankLinkStatus() {
+  const { data, error } = await sb.from('accounts').select('bank, enable_banking_account_uid').eq('type', 'checking');
+  if (error) { console.error(error); return; }
+  const linkedBanks = new Set((data || []).filter(a => a.enable_banking_account_uid).map(a => a.bank));
+  document.querySelectorAll('.bank-link-indicator').forEach(span => {
+    const accountBank = BANK_KEY_TO_ACCOUNT_BANK_STATUS[span.dataset.bank];
+    span.textContent = linkedBanks.has(accountBank) ? ' 🔗' : '';
+    span.title = linkedBanks.has(accountBank) ? 'Koppeling actief' : '';
+  });
+}
 
 function updateTopbarHeightVar() {
   const bar = document.getElementById('app-topbar');
@@ -2921,7 +2994,7 @@ document.getElementById('txn-detail-save-btn').addEventListener('click', async (
   if (pendingStagingClearId) {
     const idToClear = pendingStagingClearId;
     pendingStagingClearId = null;
-    const { error: clearErr } = await sb.from('bank_transactions_staging').delete().eq('id', idToClear);
+    const { error: clearErr } = await sb.from('bank_transactions_staging').update({ processed_at: new Date().toISOString() }).eq('id', idToClear);
     if (clearErr) console.error(clearErr);
     if (activeTab === 'accounts') loadStagingList();
   }
@@ -3061,6 +3134,7 @@ document.getElementById('poss-save').addEventListener('click', async () => {
 loadPossessions();
 
 async function loadAccounts() {
+  updateBankLinkStatus();
   const { data, error } = await sb.from('accounts').select('id, name, type, starting_balance, closed, sort_order, created_at, scope, bank').order('name');
   if (error) { console.error(error); return; }
   const el = document.getElementById('accounts-list');
