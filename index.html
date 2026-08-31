@@ -102,6 +102,18 @@
   .ie-tab-btn.active { background:#1b5e20; color:#fff; border-color:#1b5e20; }
   .cat-tree-row.hoofdcat { border-left:4px solid #1b5e20; font-weight:bold; font-size:15px; margin-top:10px; }
   .cat-tree-row.subcat { font-weight:normal; font-size:13px; color:#444; background:transparent; box-shadow:none; }
+  .budget-col-headers { display:flex; gap:8px; padding:4px 4px 6px; margin-bottom:4px; border-bottom:0.5px solid var(--border); position:-webkit-sticky; position:sticky; top:var(--topbar-h,0px); z-index:24; background:var(--bg); }
+  .budget-col-headers .budget-col-header-name { flex:2; }
+  .budget-col-headers .budget-col-header-num { flex:1; text-align:right; font-size:10px; text-transform:uppercase; color:#999; letter-spacing:.3px; }
+  .budget-group.hoofdcat-group { border-left:4px solid #1b5e20; padding-left:10px; background:var(--card); border-radius:6px; padding-top:8px; padding-bottom:2px; }
+  .budget-group:not(.hoofdcat-group) { margin-left:16px; border-left:2px solid var(--border); padding-left:10px; }
+  .budget-group > h3 { justify-content:flex-start; gap:8px; }
+  .budget-group > h3 .cat-name { flex:2; min-width:0; }
+  .budget-num { flex:1; min-width:0; text-align:right; }
+  .budget-group.hoofdcat-group > h3 .budget-num { font-size:14px; font-weight:500; }
+  .budget-group:not(.hoofdcat-group) > h3 .budget-num { font-size:12px; font-weight:400; }
+  .budget-num.positive { color:#222; }
+  .budget-num.negative { color:var(--red); }
   .budget-group.hoofdcat-group > h3 { padding-left:0; font-size:14px; font-weight:500; }
   .cat-numbers { display:flex; gap:6px; align-items:center; margin-top:4px; }
   .cat-numbers .num-col { flex:1; min-width:0; text-align:center; }
@@ -214,16 +226,19 @@
     <div class="income-expense-columns" data-ie-columns="budget">
       <div class="ie-column" data-ie-type="income">
         <h3 class="ie-column-heading income-heading">Inkomsten</h3>
+        <div class="budget-col-headers"><div class="budget-col-header-name"></div><div class="budget-col-header-num">Begroot</div><div class="budget-col-header-num">Gerealis.</div><div class="budget-col-header-num">Resterend</div></div>
         <div id="budget-groups-income"><div class="empty">Nog geen categorieën.</div></div>
         <div id="budget-total-income" class="ie-column-total"></div>
       </div>
       <div class="ie-column mobile-active" data-ie-type="expense">
         <h3 class="ie-column-heading expense-heading">Uitgaven</h3>
+        <div class="budget-col-headers"><div class="budget-col-header-name"></div><div class="budget-col-header-num">Begroot</div><div class="budget-col-header-num">Gerealis.</div><div class="budget-col-header-num">Resterend</div></div>
         <div id="budget-groups-expense"><div class="empty">Nog geen categorieën.</div></div>
         <div id="budget-total-expense" class="ie-column-total"></div>
       </div>
       <div class="ie-column" data-ie-type="reservation">
         <h3 class="ie-column-heading reservation-heading">Reserveringen</h3>
+        <div class="budget-col-headers"><div class="budget-col-header-name"></div><div class="budget-col-header-num">Begroot</div><div class="budget-col-header-num">Gerealis.</div><div class="budget-col-header-num">Resterend</div></div>
         <div id="budget-groups-reservation"><div class="empty">Nog geen categorieën.</div></div>
         <div id="budget-total-reservation" class="ie-column-total"></div>
       </div>
@@ -772,7 +787,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.41';
+const APP_VERSION = 'v3.43';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1956,7 +1971,7 @@ async function loadBudget() {
   // dubbel meetellen: één keer als "unassigned" hier, en nogmaals via de split-categorieën in spentMap.
   const { data: splitTxnIdRows } = await sb.from('transaction_splits').select('transaction_id');
   const splitTxnIds = [...new Set((splitTxnIdRows || []).map(r => r.transaction_id))];
-  let unassignedQuery = sb.from('transactions').select('amount, accounts!inner(scope)').is('category_id', null).eq('accounts.scope', 'prive');
+  let unassignedQuery = sb.from('transactions').select('amount, accounts!inner(scope)').is('category_id', null).eq('accounts.scope', 'prive').lte('date', toLocalISODate(new Date()));
   if (splitTxnIds.length > 0) unassignedQuery = unassignedQuery.not('id', 'in', `(${splitTxnIds.join(',')})`);
   const { data: unassignedTxns } = await unassignedQuery;
   const totalUnassigned = (unassignedTxns || []).reduce((s, r) => s + Number(r.amount), 0);
@@ -1970,7 +1985,7 @@ async function loadBudget() {
   rtaEl.className = 'amount ' + (rta >= 0 ? 'positive' : 'negative');
 
   const { data: allAccountsForTotal } = await sb.from('accounts').select('id, starting_balance');
-  const { data: allTxnsForTotal } = await sb.from('transactions').select('amount');
+  const { data: allTxnsForTotal } = await sb.from('transactions').select('amount').lte('date', toLocalISODate(new Date()));
   let combinedTotal = (allAccountsForTotal || []).reduce((s, a) => s + Number(a.starting_balance), 0);
   combinedTotal += (allTxnsForTotal || []).reduce((s, t) => s + Number(t.amount), 0);
   document.getElementById('combined-total').textContent = formatEuroWhole(combinedTotal);
@@ -2025,14 +2040,11 @@ async function loadBudget() {
     }, { begroot: 0, gerealiseerd: 0, resterend: 0 });
   }
 
-  function numbersBlock(n, type) {
-    const resterendLabel = type === 'income' ? 'Saldo' : 'Resterend';
+  function budgetNumCells(n, type) {
     return `
-      <div class="cat-numbers">
-        <div class="num-col"><div class="num-label">Begroot</div><div class="num-value">${formatEuroWhole(n.begroot)}</div></div>
-        <div class="num-col"><div class="num-label">Gerealiseerd</div><div class="num-value">${formatEuroWhole(n.gerealiseerd)}</div></div>
-        <div class="num-col"><div class="num-label">${resterendLabel}</div><div class="num-value ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</div></div>
-      </div>`;
+      <div class="budget-num">${formatEuroWhole(n.begroot)}</div>
+      <div class="budget-num">${formatEuroWhole(n.gerealiseerd)}</div>
+      <div class="budget-num ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</div>`;
   }
 
   function leafNumbersBlock(n, catId, type) {
@@ -2065,9 +2077,9 @@ async function loadBudget() {
       const sums = computeSums(c.id, type);
       const header = `
         <h3 style="cursor:pointer;" data-budget-toggle="${c.id}">
-          <span>${isCollapsed ? '▸' : '▾'} ${c.name}</span>
-        </h3>
-        ${numbersBlock(sums, type)}`;
+          <span class="cat-name">${isCollapsed ? '▸' : '▾'} ${c.name}</span>
+          ${budgetNumCells(sums, type)}
+        </h3>`;
       const body = isCollapsed ? '' : children.map(ch => renderNode(ch, type, depth + 1)).join('');
       return `<div class="group budget-group ${depth === 0 ? 'hoofdcat-group' : ''}">${header}${body}</div>`;
     }
@@ -3233,7 +3245,11 @@ async function loadAccounts() {
     return;
   }
 
-  const { data: allTxns } = await sb.from('transactions').select('account_id, amount');
+  // v3.43: zelfde bug-patroon als de Geldleeftijd-fix in v3.28 — toekomstige, automatisch
+  // aangemaakte herhalende transacties (tot 7 dagen vooruit, als onbevestigd) telden al mee in
+  // het getoonde saldo van vandaag. Bewust GEEN cleared-filter: een zelf ingevoerde maar nog
+  // niet tegen de bank bevestigde transactie heeft al wél plaatsgevonden en hoort mee te tellen.
+  const { data: allTxns } = await sb.from('transactions').select('account_id, amount').lte('date', toLocalISODate(new Date()));
   const txnSumByAccount = {};
   (allTxns || []).forEach(t => { txnSumByAccount[t.account_id] = (txnSumByAccount[t.account_id] || 0) + Number(t.amount); });
 
