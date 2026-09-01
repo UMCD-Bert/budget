@@ -830,7 +830,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.47';
+const APP_VERSION = 'v3.48';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -895,7 +895,14 @@ async function refreshBankReconciliation(scope) {
       statusEl.textContent = 'Ophalen mislukt: ' + detail;
       return;
     }
-    const results = (data && data.results) || [];
+    const allResults = (data && data.results) || [];
+    // v3.48: de Edge Function bevraagt altijd alle gekoppelde rekeningen tegelijk (privé +
+    // zakelijk), ongeacht welke knop je indrukte. Zonder filtering telde/toonde de melding op
+    // bijv. de Zakelijk-knop dus ook privé-resultaten mee ("8 nieuwe" terwijl die allemaal
+    // privé bleken) — nu beperkt tot rekeningen die echt bij deze scope horen.
+    const { data: scopedAccounts } = await sb.from('accounts').select('id').eq('scope', scope);
+    const scopedIds = new Set((scopedAccounts || []).map(a => a.id));
+    const results = allResults.filter(r => scopedIds.has(r.account_id));
     const expired = results.filter(r => r.status === 'consent_expired').length;
     const rateLimited = results.filter(r => r.status === 'rate_limited').length;
     const errored = results.filter(r => r.status === 'error').length;
@@ -909,10 +916,9 @@ async function refreshBankReconciliation(scope) {
     statusEl.textContent = 'Onverwachte fout: ' + e.message;
   } finally {
     btn.disabled = false;
-    // Ver ophalen bevraagt alle gekoppelde rekeningen tegelijk (privé + zakelijk), dus na het
-    // verversen van één scope ook meteen de andere lijst verversen als die al geladen is.
-    await loadStagingList('prive');
-    await loadStagingList('zakelijk');
+    // Alleen de eigen lijst verversen — niet stiekem ook de andere scope, dat verraste meer dan
+    // het hielp (transacties verschenen op een tab die je niet had aangeraakt).
+    await loadStagingList(scope);
   }
 }
 
@@ -1157,7 +1163,7 @@ function wireIeTabs(key) {
     btn.addEventListener('click', () => {
       tabBar.querySelectorAll('.ie-tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      columnsWrap.querySelectorAll('.ie-column').forEach(col => {
+      columnsWrap.querySelectorAll(':scope > .ie-column').forEach(col => {
         col.classList.toggle('mobile-active', col.dataset.ieType === btn.dataset.ieType);
       });
     });
@@ -3957,6 +3963,12 @@ function wireDragAndDrop(el, cats) {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', dragId);
     });
+
+    // Vangnet: dragend vuurt altijd op de gesleepte rij, ongeacht of je loslaat op een geldig
+    // doel — in tegenstelling tot 'drop', die alleen afvuurt als de sleep eindigt bóven een rij
+    // met een eigen listener. Zonder dit bleef de indicator (en de highlighting) permanent
+    // zichtbaar als je net naast een rij losliet.
+    row.addEventListener('dragend', () => clearDragClasses(el));
 
     row.addEventListener('dragover', (e) => {
       e.preventDefault();
