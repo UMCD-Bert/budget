@@ -250,56 +250,63 @@
   </div>
 
   <div id="tab-beheer" style="display:none">
-    <div class="group">
-      <h3>Rekeningen</h3>
-      <div class="sticky-actions-bar" style="background:var(--card); border-radius:8px; padding:10px 14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-size:12px; color:#666; text-transform:uppercase; letter-spacing:.3px;">Totaal saldo</span>
-        <span id="accounts-total-amount" style="font-weight:bold; font-size:16px;">€ 0,00</span>
-      </div>
-      <button class="btn-save" id="add-account-btn" style="width:100%; padding:10px; margin-bottom:10px;">+ Rekening toevoegen</button>
-      <div id="accounts-list"><div class="empty">Nog geen rekeningen.</div></div>
+    <div class="ie-tabs" data-ie-tabs="beheer">
+      <button class="ie-tab-btn active" data-ie-type="rekeningen">Rekeningen</button>
+      <button class="ie-tab-btn" data-ie-type="categorieen">Categorieën</button>
+      <button class="ie-tab-btn" data-ie-type="aliassen">Aliassen</button>
     </div>
+    <div class="income-expense-columns" data-ie-columns="beheer">
+      <div class="ie-column mobile-active" data-ie-type="rekeningen">
+        <div class="sticky-actions-bar" style="background:var(--card); border-radius:8px; padding:10px 14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:12px; color:#666; text-transform:uppercase; letter-spacing:.3px;">Totaal saldo</span>
+          <span id="accounts-total-amount" style="font-weight:bold; font-size:16px;">€ 0,00</span>
+        </div>
+        <button class="btn-save" id="add-account-btn" style="width:100%; padding:10px; margin-bottom:10px;">+ Rekening toevoegen</button>
+        <div id="accounts-list"><div class="empty">Nog geen rekeningen.</div></div>
+      </div>
 
-    <div class="group">
-      <h3>Categorieën</h3>
-      <button class="btn-save" id="add-root-cat-btn" style="width:100%; padding:10px; margin-bottom:10px;">+ Nieuwe hoofdcategorie</button>
-      <div class="ie-tabs" data-ie-tabs="cat">
-        <button class="ie-tab-btn" data-ie-type="income">Inkomsten</button>
-        <button class="ie-tab-btn active" data-ie-type="expense">Uitgaven</button>
-        <button class="ie-tab-btn" data-ie-type="reservation">Reserveringen</button>
+      <div class="ie-column" data-ie-type="categorieen">
+        <button class="btn-save" id="add-root-cat-btn" style="width:100%; padding:10px; margin-bottom:10px;">+ Nieuwe hoofdcategorie</button>
+        <div class="ie-tabs" data-ie-tabs="cat">
+          <button class="ie-tab-btn" data-ie-type="income">Inkomsten</button>
+          <button class="ie-tab-btn active" data-ie-type="expense">Uitgaven</button>
+          <button class="ie-tab-btn" data-ie-type="reservation">Reserveringen</button>
+        </div>
+        <div class="income-expense-columns" data-ie-columns="cat">
+          <div class="ie-column" data-ie-type="income">
+            <h3 class="ie-column-heading income-heading">Inkomsten</h3>
+            <div id="categories-tree-income"><div class="empty">Nog geen categorieën.</div></div>
+          </div>
+          <div class="ie-column mobile-active" data-ie-type="expense">
+            <h3 class="ie-column-heading expense-heading">Uitgaven</h3>
+            <div id="categories-tree-expense"><div class="empty">Nog geen categorieën.</div></div>
+          </div>
+          <div class="ie-column" data-ie-type="reservation">
+            <h3 class="ie-column-heading reservation-heading">Reserveringen</h3>
+            <div id="categories-tree-reservation"><div class="empty">Nog geen categorieën.</div></div>
+          </div>
+        </div>
+        <div id="drag-indicator" style="display:none; position:fixed; z-index:50; background:#1b5e20; color:#fff; padding:5px 10px; border-radius:6px; font-size:12px; pointer-events:none; white-space:nowrap;"></div>
       </div>
-      <div class="income-expense-columns" data-ie-columns="cat">
-        <div class="ie-column" data-ie-type="income">
-          <h3 class="ie-column-heading income-heading">Inkomsten</h3>
-          <div id="categories-tree-income"><div class="empty">Nog geen categorieën.</div></div>
-        </div>
-        <div class="ie-column mobile-active" data-ie-type="expense">
-          <h3 class="ie-column-heading expense-heading">Uitgaven</h3>
-          <div id="categories-tree-expense"><div class="empty">Nog geen categorieën.</div></div>
-        </div>
-        <div class="ie-column" data-ie-type="reservation">
-          <h3 class="ie-column-heading reservation-heading">Reserveringen</h3>
-          <div id="categories-tree-reservation"><div class="empty">Nog geen categorieën.</div></div>
-        </div>
-      </div>
-      <div id="drag-indicator" style="display:none; position:fixed; z-index:50; background:#1b5e20; color:#fff; padding:5px 10px; border-radius:6px; font-size:12px; pointer-events:none; white-space:nowrap;"></div>
-    </div>
 
-    <div class="group">
-      <h3>Naam-aliassen (voor bank-import)</h3>
-      <p style="font-size:12px; color:#888; margin:0 0 8px;">Als een deel van de bankomschrijving dit patroon bevat, wordt de naam-suggestie het alias in plaats van de standaard-afleiding. Voorkeurscategorie is optioneel (alleen privé-categorieën) en wordt dan ook meteen voorgesteld.</p>
-      <div style="display:flex; gap:6px; margin-bottom:6px;">
-        <input type="text" id="payee-alias-pattern" placeholder="Patroon (bv. BCK*PLUS)" style="flex:1; min-width:0;">
-        <input type="text" id="payee-alias-value" placeholder="Alias (bv. Plus)" style="flex:1; min-width:0;">
-      </div>
-      <div style="display:flex; gap:6px; margin-bottom:8px;">
-        <div class="cat-picker-wrap" style="position:relative; flex:1; min-width:0;">
-          <input type="text" id="payee-alias-category-search" autocomplete="off" placeholder="Voorkeurscategorie (optioneel)">
-          <div class="cat-popup" id="payee-alias-category-popup" style="display:none;"></div>
+      <div class="ie-column" data-ie-type="aliassen">
+        <h3>Naam-aliassen <button class="add-sub-btn" id="payee-alias-add-toggle">+ toevoegen</button></h3>
+        <div id="payee-alias-form" style="display:none; background:var(--card); border-radius:8px; padding:10px 14px; margin-bottom:10px;">
+          <p style="font-size:12px; color:#888; margin:0 0 8px;">Als een deel van de bankomschrijving dit patroon bevat, wordt de naam-suggestie het alias in plaats van de standaard-afleiding. Voorkeurscategorie is optioneel (alleen privé-categorieën) en wordt dan ook meteen voorgesteld.</p>
+          <div style="display:flex; gap:6px; margin-bottom:6px;">
+            <input type="text" id="payee-alias-pattern" placeholder="Patroon (bv. BCK*PLUS)" style="flex:1; min-width:0;">
+            <input type="text" id="payee-alias-value" placeholder="Alias (bv. Plus)" style="flex:1; min-width:0;">
+          </div>
+          <div style="display:flex; gap:6px;">
+            <div class="cat-picker-wrap" style="position:relative; flex:1; min-width:0;">
+              <input type="text" id="payee-alias-category-search" autocomplete="off" placeholder="Voorkeurscategorie (optioneel)">
+              <div class="cat-popup" id="payee-alias-category-popup" style="display:none;"></div>
+            </div>
+            <button class="btn-save" id="payee-alias-add-btn" style="padding:6px 12px;">Opslaan</button>
+          </div>
         </div>
-        <button class="btn-save" id="payee-alias-add-btn" style="padding:6px 12px;">+ Toevoegen</button>
+        <div id="payee-alias-list"></div>
       </div>
-      <div id="payee-alias-list"></div>
     </div>
   </div>
 
@@ -823,7 +830,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.46';
+const APP_VERSION = 'v3.47';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1042,8 +1049,14 @@ document.getElementById('payee-alias-add-btn').addEventListener('click', async (
   document.getElementById('payee-alias-pattern').value = '';
   document.getElementById('payee-alias-value').value = '';
   document.getElementById('payee-alias-category-search').value = '';
+  document.getElementById('payee-alias-form').style.display = 'none';
   invalidatePayeeAliasesCache();
   loadPayeeAliasList();
+});
+
+document.getElementById('payee-alias-add-toggle').addEventListener('click', () => {
+  const form = document.getElementById('payee-alias-form');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
 });
 
 async function reconIgnoreRow(id, scope) {
@@ -1152,6 +1165,7 @@ function wireIeTabs(key) {
 }
 wireIeTabs('cat');
 wireIeTabs('budget');
+wireIeTabs('beheer');
 
 // ---- Tab switching ----
 let activeTab = 'budget';
