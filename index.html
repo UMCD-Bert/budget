@@ -151,6 +151,8 @@
   .dash-bar-track { flex:1; height:14px; background:#e0e0e0; border-radius:4px; overflow:hidden; }
   .dash-bar-fill { height:100%; background:var(--red); border-radius:4px; }
   .dash-bar-value { width:80px; flex-shrink:0; text-align:right; font-size:12px; font-weight:bold; }
+  .dash-cat-hoofd { border-left:4px solid #1b5e20; padding-left:8px; }
+  .dash-cat-nested { margin-left:14px; border-left:2px solid var(--border); padding-left:8px; margin-bottom:6px; }
   .select-toggle-btn { font-size:12px; color:var(--green); background:none; border:1px solid var(--green); border-radius:6px; padding:4px 10px; cursor:pointer; }
   .select-toggle-btn.active { background:var(--green); color:#fff; }
   .amount-type-toggle { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-top:2px; }
@@ -428,8 +430,11 @@
     </div>
     <div class="group">
       <h3>Grootste (sub)categorieën</h3>
+      <div class="amount-type-toggle" style="margin-bottom:8px; margin-top:0;">
+        <button type="button" id="dash-cat-type-expense" class="active-expense">Uitgaven</button>
+        <button type="button" id="dash-cat-type-income">Inkomsten</button>
+      </div>
       <div style="display:flex; gap:6px; margin-bottom:8px;">
-        <button class="select-toggle-btn" id="dash-cat-type-toggle">Uitgaven</button>
         <button class="select-toggle-btn" id="dash-cat-mode-toggle">Gemiddelde</button>
       </div>
       <div id="dash-cat-month-nav" style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:8px;">
@@ -437,7 +442,6 @@
         <div id="dash-cat-month-label" style="font-weight:bold; min-width:70px; text-align:center;"></div>
         <button class="select-toggle-btn" id="dash-cat-month-next">›</button>
       </div>
-      <div id="dash-cat-breadcrumb" style="display:none; font-size:13px; color:#1b5e20; cursor:pointer; margin-bottom:6px;"></div>
       <div id="dash-top-categories-list"><div class="empty">Nog geen gegevens.</div></div>
     </div>
     <div class="group">
@@ -801,7 +805,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.44';
+const APP_VERSION = 'v3.45';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1292,28 +1296,16 @@ function accountIconHtml(account) {
   return '';
 }
 
-function renderTopCategoriesChart(items) {
-  if (items.length === 0) return '<div class="empty">Nog geen gegevens.</div>';
-  const maxAbs = Math.max(...items.map(it => Math.abs(it.total)), 1);
-  return items.map(it => {
-    const pct = (Math.abs(it.total) / maxAbs) * 100;
-    return `
-      <div class="dash-bar-row" data-key="${it.key}" style="${it.clickable ? 'cursor:pointer;' : ''}">
-        <div class="dash-bar-label">${it.name}</div>
-        <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%;"></div></div>
-        <div class="dash-bar-value">${formatEuro(it.total)}</div>
-      </div>`;
-  }).join('');
-}
-
-// v3.44: state voor "Grootste (sub)categorieën" — apart gecachet zodat toggle/maandnavigatie/
-// drill-down niet telkens opnieuw bij Supabase hoeft te bevragen, alleen loadDashboard() zelf
+// v3.45: state voor "Grootste (sub)categorieën" — apart gecachet zodat toggle/maandnavigatie/
+// uitklappen niet telkens opnieuw bij Supabase hoeft te bevragen, alleen loadDashboard() zelf
 // (bij het openen van de tab) ververst de onderliggende data.
 let dashCatById = {}, dashCatMonthTotals = {}, dashAllMonths = [];
 let dashCatType = 'expense'; // 'expense' | 'income'
 let dashCatMode = 'month'; // 'month' | 'average'
 let dashCatViewMonth = null; // 'YYYY-MM'
-let dashCatDrilldown = null; // hoofdcategorie-id, of null = topniveau
+let dashExpandedHoofdcat = new Set(); // meerdere tegelijk uitgeklapt mag, de rest blijft zichtbaar
+let dashExpandedSubcat = new Set();
+let dashSubcatTxnCache = {}; // cacheKey -> array van {id,date,payee,amount}, of 'loading'
 
 function dashRootIdOf(catKey) {
   if (catKey === 'null') return 'null';
@@ -1368,78 +1360,148 @@ function dashCategoryValue(catKey) {
   return (dashCatMonthTotals[catKey] && dashCatMonthTotals[catKey][dashCatViewMonth]) || 0;
 }
 
+function dashBarRowHtml(item) {
+  return `
+    <div class="dash-bar-row">
+      <div class="dash-bar-label">${item.arrow ? item.arrow + ' ' : ''}${item.name}</div>
+      <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${item.pct}%;"></div></div>
+      <div class="dash-bar-value">${formatEuroWhole(item.total)}</div>
+    </div>`;
+}
+
+function renderDashHoofdcatList() {
+  const allKeys = Object.keys(dashCatMonthTotals);
+  const sums = {};
+  allKeys.forEach(k => {
+    const type = k === 'null' ? 'expense' : rootTypeOfCategory(Number(k), dashCatById);
+    if (type !== dashCatType) return;
+    const rootId = dashRootIdOf(k);
+    sums[rootId] = (sums[rootId] || 0) + dashCategoryValue(k);
+  });
+  const items = Object.entries(sums)
+    .map(([rootId, total]) => ({ key: rootId, name: rootId === 'null' ? 'Ongecategoriseerd' : (dashCatById[rootId] ? dashCatById[rootId].name : '?'), total, clickable: rootId !== 'null' }))
+    .filter(it => Math.abs(it.total) > 0.001)
+    .sort((a, b) => a.total - b.total);
+  if (items.length === 0) return '<div class="empty">Nog geen gegevens.</div>';
+  const maxAbs = Math.max(...items.map(it => Math.abs(it.total)), 1);
+  return items.map(it => {
+    const pct = (Math.abs(it.total) / maxAbs) * 100;
+    const expanded = dashExpandedHoofdcat.has(it.key);
+    const arrow = it.clickable ? (expanded ? '▾' : '▸') : '';
+    let block = `<div class="dash-cat-block dash-cat-hoofd" data-level="hoofd" data-key="${it.key}" style="${it.clickable ? 'cursor:pointer;' : ''}">${dashBarRowHtml({ ...it, pct, arrow })}</div>`;
+    if (expanded && it.clickable) block += `<div class="dash-cat-nested">${renderDashSubcatList(it.key)}</div>`;
+    return block;
+  }).join('');
+}
+
+function renderDashSubcatList(hoofdcatId) {
+  const allKeys = Object.keys(dashCatMonthTotals);
+  const sums = {}, meta = {};
+  allKeys.forEach(k => {
+    if (k === 'null') return; // Ongecategoriseerd valt nooit onder een hoofdcategorie
+    if (String(dashRootIdOf(k)) !== String(hoofdcatId)) return;
+    const bucket = dashSubcatBucketOf(k, Number(hoofdcatId));
+    if (!bucket) return;
+    sums[bucket.id] = (sums[bucket.id] || 0) + dashCategoryValue(k);
+    meta[bucket.id] = bucket;
+  });
+  const items = Object.entries(sums)
+    .map(([id, total]) => ({ key: id, name: meta[id].name, total }))
+    .filter(it => Math.abs(it.total) > 0.001)
+    .sort((a, b) => a.total - b.total);
+  if (items.length === 0) return '<div class="empty" style="font-size:12px;">Geen subcategorieën met bedragen.</div>';
+  const maxAbs = Math.max(...items.map(it => Math.abs(it.total)), 1);
+  return items.map(it => {
+    const pct = (Math.abs(it.total) / maxAbs) * 100;
+    const expanded = dashExpandedSubcat.has(it.key);
+    let block = `<div class="dash-cat-block dash-cat-sub" data-level="sub" data-key="${it.key}" style="cursor:pointer;">${dashBarRowHtml({ ...it, pct, arrow: expanded ? '▾' : '▸' })}</div>`;
+    if (expanded) block += `<div class="dash-cat-nested">${renderDashTxnList(it.key)}</div>`;
+    return block;
+  }).join('');
+}
+
+function dashTxnCacheKey(catId) {
+  return catId + ':' + dashCatMode + ':' + (dashCatMode === 'month' ? dashCatViewMonth : 'all');
+}
+
+function renderDashTxnList(catId) {
+  const cacheKey = dashTxnCacheKey(catId);
+  const cached = dashSubcatTxnCache[cacheKey];
+  if (cached === undefined) {
+    loadDashSubcatTransactions(catId, cacheKey); // async; ververst zichzelf zodra klaar
+    return '<div class="empty" style="font-size:12px;">Laden...</div>';
+  }
+  if (cached === 'loading') return '<div class="empty" style="font-size:12px;">Laden...</div>';
+  if (cached.length === 0) return '<div class="empty" style="font-size:12px;">Geen transacties.</div>';
+  return cached.map(t => `
+    <div class="dash-txn-row" data-txn-id="${t.id}" style="cursor:pointer; display:flex; justify-content:space-between; padding:3px 0; font-size:13px; border-top:0.5px solid var(--border);">
+      <span>${t.date} — ${t.payee || '(onbekend)'}</span>
+      <span>${formatEuroWhole(t.amount)}</span>
+    </div>`).join('');
+}
+
+async function loadDashSubcatTransactions(catId, cacheKey) {
+  dashSubcatTxnCache[cacheKey] = 'loading';
+  let directQuery = sb.from('transactions').select('id, date, payee, amount').eq('category_id', catId);
+  if (dashCatMode === 'month') {
+    const monthStart = dashCatViewMonth + '-01';
+    const endD = new Date(dashCatViewMonth + '-01T00:00:00');
+    endD.setMonth(endD.getMonth() + 1);
+    directQuery = directQuery.gte('date', monthStart).lt('date', toLocalISODate(endD));
+  }
+  const { data: direct } = await directQuery.order('date', { ascending: false });
+  const { data: splitRows } = await sb.from('transaction_splits').select('transaction_id, amount, transactions(id, date, payee)').eq('category_id', catId);
+  let combined = (direct || []).map(t => ({ id: t.id, date: t.date, payee: t.payee, amount: Number(t.amount) }));
+  (splitRows || []).forEach(r => {
+    const t = r.transactions;
+    if (!t) return;
+    if (dashCatMode === 'month' && t.date.slice(0, 7) !== dashCatViewMonth) return;
+    combined.push({ id: t.id, date: t.date, payee: t.payee, amount: Number(r.amount) });
+  });
+  combined.sort((a, b) => b.date.localeCompare(a.date));
+  dashSubcatTxnCache[cacheKey] = combined;
+  renderDashCategorySection();
+}
+
 function renderDashCategorySection() {
   const catEl = document.getElementById('dash-top-categories-list');
   if (!catEl) return;
-  const allKeys = Object.keys(dashCatMonthTotals);
-  let items;
+  catEl.innerHTML = renderDashHoofdcatList();
 
-  if (dashCatDrilldown === null) {
-    const sums = {};
-    allKeys.forEach(k => {
-      const type = k === 'null' ? 'expense' : rootTypeOfCategory(Number(k), dashCatById);
-      if (type !== dashCatType) return;
-      const rootId = dashRootIdOf(k);
-      sums[rootId] = (sums[rootId] || 0) + dashCategoryValue(k);
-    });
-    items = Object.entries(sums).map(([rootId, total]) => ({
-      key: rootId,
-      name: rootId === 'null' ? 'Ongecategoriseerd' : (dashCatById[rootId] ? dashCatById[rootId].name : '?'),
-      total,
-      clickable: rootId !== 'null',
-    }));
-  } else {
-    const sums = {}, bucketMeta = {};
-    allKeys.forEach(k => {
-      if (k === 'null') return; // Ongecategoriseerd valt nooit onder een hoofdcategorie
-      if (String(dashRootIdOf(k)) !== String(dashCatDrilldown)) return;
-      const bucket = dashSubcatBucketOf(k, Number(dashCatDrilldown));
-      if (!bucket) return;
-      sums[bucket.id] = (sums[bucket.id] || 0) + dashCategoryValue(k);
-      bucketMeta[bucket.id] = bucket;
-    });
-    items = Object.entries(sums).map(([bucketId, total]) => ({
-      key: bucketId,
-      name: bucketMeta[bucketId].name,
-      total,
-      clickable: true,
-    }));
-  }
-
-  items = items.filter(it => Math.abs(it.total) > 0.001).sort((a, b) => a.total - b.total);
-  catEl.innerHTML = renderTopCategoriesChart(items);
-  catEl.querySelectorAll('.dash-bar-row').forEach(row => {
-    const key = row.dataset.key;
-    const item = items.find(it => String(it.key) === key);
-    if (!item || !item.clickable) return;
-    row.addEventListener('click', () => {
-      if (dashCatDrilldown === null) {
-        dashCatDrilldown = key;
-        renderDashCategorySection();
-      } else {
-        const catId = Number(key);
-        const monthDate = dashCatMode === 'month' ? new Date(dashCatViewMonth + '-01T00:00:00') : new Date();
-        goToTransactionsForCategory(catId, monthDate);
-      }
-    });
-  });
-
-  document.getElementById('dash-cat-type-toggle').textContent = dashCatType === 'expense' ? 'Uitgaven' : 'Inkomsten';
   document.getElementById('dash-cat-mode-toggle').textContent = dashCatMode === 'month' ? 'Gemiddelde' : '‹ Terug naar maand';
   document.getElementById('dash-cat-month-nav').style.display = dashCatMode === 'month' ? 'flex' : 'none';
   document.getElementById('dash-cat-month-label').textContent = dashCatViewMonth ? formatMonthLabelNL(dashCatViewMonth) : '';
-  const breadcrumbEl = document.getElementById('dash-cat-breadcrumb');
-  if (dashCatDrilldown !== null) {
-    breadcrumbEl.style.display = 'block';
-    breadcrumbEl.textContent = '‹ Terug naar hoofdcategorieën';
-  } else {
-    breadcrumbEl.style.display = 'none';
-  }
 }
 
-document.getElementById('dash-cat-type-toggle').addEventListener('click', () => {
-  dashCatType = dashCatType === 'expense' ? 'income' : 'expense';
-  dashCatDrilldown = null;
+// Eén klik-listener op de container (event delegation) i.p.v. losse listeners per rij — die
+// zouden anders bij elke her-render (uitklappen) opnieuw aangekoppeld moeten worden.
+document.getElementById('dash-top-categories-list').addEventListener('click', (e) => {
+  const txnRow = e.target.closest('.dash-txn-row');
+  if (txnRow) { openTxnDetail(Number(txnRow.dataset.txnId)); return; }
+  const block = e.target.closest('.dash-cat-block');
+  if (!block) return;
+  const key = block.dataset.key;
+  if (block.dataset.level === 'hoofd') {
+    if (key === 'null') return; // Ongecategoriseerd niet klikbaar
+    if (dashExpandedHoofdcat.has(key)) dashExpandedHoofdcat.delete(key); else dashExpandedHoofdcat.add(key);
+  } else if (block.dataset.level === 'sub') {
+    if (dashExpandedSubcat.has(key)) dashExpandedSubcat.delete(key); else dashExpandedSubcat.add(key);
+  }
+  renderDashCategorySection();
+});
+
+document.getElementById('dash-cat-type-expense').addEventListener('click', () => {
+  dashCatType = 'expense';
+  document.getElementById('dash-cat-type-expense').className = 'active-expense';
+  document.getElementById('dash-cat-type-income').className = '';
+  dashExpandedHoofdcat.clear(); dashExpandedSubcat.clear();
+  renderDashCategorySection();
+});
+document.getElementById('dash-cat-type-income').addEventListener('click', () => {
+  dashCatType = 'income';
+  document.getElementById('dash-cat-type-income').className = 'active-income';
+  document.getElementById('dash-cat-type-expense').className = '';
+  dashExpandedHoofdcat.clear(); dashExpandedSubcat.clear();
   renderDashCategorySection();
 });
 document.getElementById('dash-cat-mode-toggle').addEventListener('click', () => {
@@ -1456,10 +1518,6 @@ document.getElementById('dash-cat-month-next').addEventListener('click', () => {
   const d = new Date(dashCatViewMonth + '-01T00:00:00');
   d.setMonth(d.getMonth() + 1);
   dashCatViewMonth = toLocalISODate(d).slice(0, 7);
-  renderDashCategorySection();
-});
-document.getElementById('dash-cat-breadcrumb').addEventListener('click', () => {
-  dashCatDrilldown = null;
   renderDashCategorySection();
 });
 
@@ -1489,7 +1547,10 @@ async function loadDashboard() {
   const catById = {};
   (cats || []).forEach(c => catById[c.id] = c);
 
-  const months = [...new Set(rows.map(t => t.date.slice(0, 7)))].sort();
+  // v3.45: toekomstige maanden (bv. een vooruit-gedateerde transactie) hoorden hier nooit in te
+  // staan — "Geldleeftijd is altijd <= vandaag", en hetzelfde geldt voor Maandsaldo.
+  const todayMonthStr = toLocalISODate(new Date()).slice(0, 7);
+  const months = [...new Set(rows.map(t => t.date.slice(0, 7)))].filter(m => m <= todayMonthStr).sort();
 
   // Gesplitste transacties: de hoofdrij heeft category_id = null (die zou anders onterecht als
   // "Ongecategoriseerd" meetellen); in plaats daarvan boeken we elke split-rij op zijn eigen categorie.
@@ -1567,7 +1628,7 @@ async function loadDashboard() {
 
   function renderMoneyAgeChart(monthsArr, ages) {
     if (monthsArr.length === 0) return '<div class="empty">Nog geen gegevens.</div>';
-    const w = 600, h = 220, padLeft = 16, padRight = 50, padTop = 30, padBottom = 34;
+    const w = 600, h = 220, padLeft = 20, padRight = 44, padTop = 30, padBottom = 34;
     const plotW = w - padLeft - padRight, plotH = h - padTop - padBottom;
     const validAges = ages.filter(a => a !== null);
     const maxAge = Math.max(...(validAges.length ? validAges : [30]), 30);
@@ -1575,14 +1636,20 @@ async function loadDashboard() {
     const xFor = i => padLeft + i * stepX;
     const yFor = a => padTop + plotH - (a / maxAge) * plotH;
     const points = ages.map((a, i) => a === null ? null : `${xFor(i)},${yFor(a)}`).filter(Boolean).join(' ');
-    const dots = ages.map((a, i) => a === null ? '' : `<circle cx="${xFor(i)}" cy="${yFor(a)}" r="8" fill="${a > 30 ? '#f9a825' : '#1b5e20'}" stroke="#fff" stroke-width="2" data-month="${monthsArr[i]}" data-age="${a}"></circle>`).join('');
-    const valueLabels = ages.map((a, i) => a === null ? '' : `<text x="${xFor(i)}" y="${yFor(a) - 14}" font-size="18" font-weight="500" fill="#222" text-anchor="middle">${a}d</text>`).join('');
+    const dots = ages.map((a, i) => a === null ? '' : `<circle cx="${xFor(i)}" cy="${yFor(a)}" r="7" fill="${a > 30 ? '#f9a825' : '#1b5e20'}" stroke="#fff" stroke-width="2" data-month="${monthsArr[i]}" data-age="${a}"></circle>`).join('');
+    const valueLabels = ages.map((a, i) => a === null ? '' : `<text x="${xFor(i)}" y="${yFor(a) - 12}" font-size="14" font-weight="500" fill="#222" text-anchor="middle">${a}d</text>`).join('');
     const thresholdY = yFor(30);
     const labelIdx = monthLabelIndices(monthsArr);
-    const labels = monthsArr.map((m, i) => labelIdx.has(i) ? `<text x="${xFor(i)}" y="${h - 10}" font-size="18" text-anchor="middle" fill="#888">${formatMonthLabelNL(m)}</text>` : '').join('');
+    // Rand-labels (eerste/laatste maand) tegen de rand uitlijnen i.p.v. centreren, anders vallen
+    // ze links/rechts van het canvas en worden ze afgekapt.
+    const labels = monthsArr.map((m, i) => {
+      if (!labelIdx.has(i)) return '';
+      const anchor = i === 0 ? 'start' : (i === monthsArr.length - 1 ? 'end' : 'middle');
+      return `<text x="${xFor(i)}" y="${h - 10}" font-size="14" text-anchor="${anchor}" fill="#888">${formatMonthLabelNL(m)}</text>`;
+    }).join('');
     return `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;">
       <line x1="${padLeft}" y1="${thresholdY}" x2="${w - padRight}" y2="${thresholdY}" stroke="#f9a825" stroke-dasharray="4,3" stroke-width="1"></line>
-      <text x="${w - padRight + 6}" y="${thresholdY + 5}" font-size="16" fill="#f9a825" text-anchor="start">30 dagen</text>
+      <text x="${w - 2}" y="${thresholdY - 6}" font-size="12" fill="#f9a825" text-anchor="end">30d</text>
       <polyline points="${points}" fill="none" stroke="#1b5e20" stroke-width="2"></polyline>
       ${dots}
       ${valueLabels}
@@ -1593,35 +1660,44 @@ async function loadDashboard() {
 
   function renderMonthlySaldoChart(monthsArr, incomeArr, expenseArr) {
     if (monthsArr.length === 0) return '<div class="empty">Nog geen gegevens.</div>';
-    const w = 600, h = 240, padLeft = 8, padRight = 8, padTop = 40, padBottom = 34;
+    const w = 600, h = 240, padLeft = 10, padRight = 10, padTop = 40, padBottom = 34;
     const plotW = w - padLeft - padRight, plotH = h - padTop - padBottom;
-    const maxAbs = Math.max(...incomeArr.map(Math.abs), ...expenseArr.map(Math.abs), 1);
-    const zeroY = padTop + plotH / 2;
+    const expenseAbsArr = expenseArr.map(v => Math.abs(v)); // uitgaven als positief bedrag, direct vergelijkbaar met inkomsten
+    const maxAbs = Math.max(...incomeArr, ...expenseAbsArr, 1);
+    const baseline = padTop + plotH; // beide staven groeien hiervandaan omhoog, geen nullijn in het midden
     const slot = plotW / monthsArr.length;
     const barW = Math.max(4, slot * 0.32);
     const gap = Math.max(1, slot * 0.04);
     const labelIdx = monthLabelIndices(monthsArr); // dezelfde ankerlogica ook voor de cijferlabels, anders wordt een lange reeks onleesbaar
     let bars = '', valueLabels = '';
     monthsArr.forEach((m, i) => {
-      const income = incomeArr[i], expense = expenseArr[i]; // expense is negatief
-      const saldo = income + expense;
+      const income = incomeArr[i], expenseAbs = expenseAbsArr[i];
+      const saldo = income - expenseAbs;
       const slotCenter = padLeft + i * slot + slot / 2;
       const incX = slotCenter - barW - gap / 2, expX = slotCenter + gap / 2;
-      const incH = (Math.abs(income) / maxAbs) * (plotH / 2);
-      const expH = (Math.abs(expense) / maxAbs) * (plotH / 2);
-      bars += `<rect x="${incX}" y="${zeroY - incH}" width="${barW}" height="${incH}" fill="#43a047"></rect>`;
-      bars += `<rect x="${expX}" y="${zeroY}" width="${barW}" height="${expH}" fill="#c62828"></rect>`;
+      const incH = (income / maxAbs) * plotH;
+      const expH = (expenseAbs / maxAbs) * plotH;
+      bars += `<rect x="${incX}" y="${baseline - incH}" width="${barW}" height="${incH}" fill="#43a047"></rect>`;
+      bars += `<rect x="${expX}" y="${baseline - expH}" width="${barW}" height="${expH}" fill="#c62828"></rect>`;
       if (labelIdx.has(i)) {
         const saldoColor = saldo >= 0 ? '#1b5e20' : '#c62828';
         const saldoSign = saldo >= 0 ? '+' : '';
-        valueLabels += `<text x="${slotCenter}" y="${padTop - 10}" font-size="16" font-weight="500" fill="${saldoColor}" text-anchor="middle">${saldoSign}${formatEuroWhole(saldo)}</text>`;
-        valueLabels += `<text x="${incX + barW / 2}" y="${zeroY - incH - 6}" font-size="13" fill="#43a047" text-anchor="middle">${formatEuroWhole(income)}</text>`;
-        valueLabels += `<text x="${expX + barW / 2}" y="${zeroY + expH + 16}" font-size="13" fill="#c62828" text-anchor="middle">${formatEuroWhole(expense)}</text>`;
+        const topH = Math.max(incH, expH);
+        valueLabels += `<text x="${slotCenter}" y="${padTop - 10}" font-size="13" font-weight="500" fill="${saldoColor}" text-anchor="middle">${saldoSign}${formatEuroWhole(saldo)}</text>`;
+        valueLabels += `<text x="${incX + barW / 2}" y="${baseline - incH - 6}" font-size="11" fill="#43a047" text-anchor="middle">${formatEuroWhole(income)}</text>`;
+        valueLabels += `<text x="${expX + barW / 2}" y="${baseline - expH - 6}" font-size="11" fill="#c62828" text-anchor="middle">${formatEuroWhole(expenseAbs)}</text>`;
       }
     });
-    const labels = monthsArr.map((m, i) => labelIdx.has(i) ? `<text x="${padLeft + i * slot + slot / 2}" y="${h - 10}" font-size="18" text-anchor="middle" fill="#888">${formatMonthLabelNL(m)}</text>` : '').join('');
+    // Rand-labels (eerste/laatste maand) tegen de rand uitlijnen i.p.v. centreren, anders vallen
+    // ze links/rechts van het canvas en worden ze afgekapt.
+    const labels = monthsArr.map((m, i) => {
+      if (!labelIdx.has(i)) return '';
+      const slotCenter = padLeft + i * slot + slot / 2;
+      const anchor = i === 0 ? 'start' : (i === monthsArr.length - 1 ? 'end' : 'middle');
+      return `<text x="${slotCenter}" y="${h - 10}" font-size="14" text-anchor="${anchor}" fill="#888">${formatMonthLabelNL(m)}</text>`;
+    }).join('');
     return `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;">
-      <line x1="${padLeft}" y1="${zeroY}" x2="${w - padRight}" y2="${zeroY}" stroke="#ccc" stroke-width="1"></line>
+      <line x1="${padLeft}" y1="${baseline}" x2="${w - padRight}" y2="${baseline}" stroke="#ccc" stroke-width="1"></line>
       ${bars}
       ${valueLabels}
       ${labels}
