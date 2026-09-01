@@ -427,7 +427,17 @@
       <div id="dash-money-age-list"><div class="empty">Nog geen gegevens.</div></div>
     </div>
     <div class="group">
-      <h3>Grootste hoofdcategorieën (uitgaven)</h3>
+      <h3>Grootste (sub)categorieën</h3>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <button class="select-toggle-btn" id="dash-cat-type-toggle">Uitgaven</button>
+        <button class="select-toggle-btn" id="dash-cat-mode-toggle">Gemiddelde</button>
+      </div>
+      <div id="dash-cat-month-nav" style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:8px;">
+        <button class="select-toggle-btn" id="dash-cat-month-prev">‹</button>
+        <div id="dash-cat-month-label" style="font-weight:bold; min-width:70px; text-align:center;"></div>
+        <button class="select-toggle-btn" id="dash-cat-month-next">›</button>
+      </div>
+      <div id="dash-cat-breadcrumb" style="display:none; font-size:13px; color:#1b5e20; cursor:pointer; margin-bottom:6px;"></div>
       <div id="dash-top-categories-list"><div class="empty">Nog geen gegevens.</div></div>
     </div>
     <div class="group">
@@ -773,6 +783,10 @@
         <option value="reservation">Reserveringen</option>
       </select>
     </div>
+    <div id="cat-spread-row" style="display:none;">
+      <label><input type="checkbox" id="cat-spread" style="width:auto;"> Gespreid door de maand</label>
+      <p style="font-size:12px; color:#888; margin:2px 0 0;">Voor categorieën met meerdere, verspreide uitgaven/inkomsten (bv. boodschappen, kleding) i.p.v. één vast moment (bv. hypotheek, energie) — bepaalt hoe de lopende maand meetelt bij "Gemiddelde" op het Dashboard.</p>
+    </div>
     <div class="actions">
       <button class="btn-cancel" id="cat-cancel">Annuleren</button>
       <button class="btn-save" id="cat-save">Opslaan</button>
@@ -787,7 +801,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.43';
+const APP_VERSION = 'v3.44';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1256,18 +1270,205 @@ function bankLogoHtml(bankKey) {
   return `<img src="${BANK_LOGOS[bankKey]}" alt="${BANK_LABELS[bankKey] || bankKey}" style="height:18px; width:18px; object-fit:contain; vertical-align:middle; margin-right:4px; border-radius:3px; background:#fff;">`;
 }
 
+const MONTH_ABBR_NL = ['JAN','FEB','MRT','APR','MEI','JUN','JUL','AUG','SEP','OKT','NOV','DEC'];
+function formatMonthLabelNL(m) {
+  // m is 'YYYY-MM'
+  const [yyyy, mm] = m.split('-');
+  return MONTH_ABBR_NL[parseInt(mm, 10) - 1] + '-' + yyyy.slice(2);
+}
+// Welke indices een label moeten tonen: bij weinig kolommen gewoon allemaal, anders per
+// kwartaal (elke 3e) — geankerd op het EINDE van de reeks (de huidige/laatste maand), zodat
+// het altijd "nu, dan -3, dan -3, ..." is i.p.v. geteld vanaf het begin van de reeks.
+function monthLabelIndices(monthsArr) {
+  const step = monthsArr.length <= 6 ? 1 : 3;
+  const indices = [];
+  for (let i = monthsArr.length - 1; i >= 0; i -= step) indices.unshift(i);
+  return new Set(indices);
+}
+
 function accountIconHtml(account) {
   if (account.bank) return bankLogoHtml(account.bank);
   if (account.type === 'cash') return '<span style="display:inline-block; width:18px; text-align:center; margin-right:4px;">💶</span>';
   return '';
 }
 
+function renderTopCategoriesChart(items) {
+  if (items.length === 0) return '<div class="empty">Nog geen gegevens.</div>';
+  const maxAbs = Math.max(...items.map(it => Math.abs(it.total)), 1);
+  return items.map(it => {
+    const pct = (Math.abs(it.total) / maxAbs) * 100;
+    return `
+      <div class="dash-bar-row" data-key="${it.key}" style="${it.clickable ? 'cursor:pointer;' : ''}">
+        <div class="dash-bar-label">${it.name}</div>
+        <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%;"></div></div>
+        <div class="dash-bar-value">${formatEuro(it.total)}</div>
+      </div>`;
+  }).join('');
+}
+
+// v3.44: state voor "Grootste (sub)categorieën" — apart gecachet zodat toggle/maandnavigatie/
+// drill-down niet telkens opnieuw bij Supabase hoeft te bevragen, alleen loadDashboard() zelf
+// (bij het openen van de tab) ververst de onderliggende data.
+let dashCatById = {}, dashCatMonthTotals = {}, dashAllMonths = [];
+let dashCatType = 'expense'; // 'expense' | 'income'
+let dashCatMode = 'month'; // 'month' | 'average'
+let dashCatViewMonth = null; // 'YYYY-MM'
+let dashCatDrilldown = null; // hoofdcategorie-id, of null = topniveau
+
+function dashRootIdOf(catKey) {
+  if (catKey === 'null') return 'null';
+  let c = dashCatById[catKey];
+  if (!c) return 'null';
+  const seen = new Set();
+  while (c.parent_id && dashCatById[c.parent_id] && !seen.has(c.id)) { seen.add(c.id); c = dashCatById[c.parent_id]; }
+  return c.id;
+}
+
+function dashSubcatBucketOf(catKey, hoofdcatId) {
+  // Geeft de directe-kind-node (onder hoofdcatId) waar catKey (evt. dieper genest) onder valt.
+  if (catKey === 'null') return null;
+  let c = dashCatById[catKey];
+  if (!c) return null;
+  const seen = new Set();
+  while (c.parent_id !== hoofdcatId) {
+    if (!c.parent_id || !dashCatById[c.parent_id] || seen.has(c.id)) return null;
+    seen.add(c.id);
+    c = dashCatById[c.parent_id];
+  }
+  return c;
+}
+
+// "Gemiddelde": volledig afgesloten maanden tellen altijd volledig mee (incl. maanden met €0 in
+// deze categorie — anders zou een vaste-lasten-categorie met maar 1 transactie per maand een
+// vertekend beeld geven). De lopende, nog niet afgesloten maand hangt af van het "Gespreid door
+// de maand"-vinkje van de categorie zelf: niet-gespreid (bv. hypotheek) telt pas mee zodra de
+// vaste transactie er al is (en dan gewoon volledig), gespreid (bv. boodschappen) telt altijd
+// mee maar met een gewicht van dag-van-de-maand/dagen-in-de-maand, in plaats van vol gewicht.
+function dashCategoryAverage(catKey) {
+  const totals = dashCatMonthTotals[catKey] || {};
+  const todayMonth = toLocalISODate(new Date()).slice(0, 7);
+  const completedMonths = dashAllMonths.filter(m => m < todayMonth);
+  let sum = 0, weight = 0;
+  completedMonths.forEach(m => { sum += (totals[m] || 0); weight += 1; });
+  const spread = catKey !== 'null' && dashCatById[catKey] && dashCatById[catKey].spread_through_month;
+  const currentAmt = totals[todayMonth] || 0;
+  const today = new Date();
+  if (spread) {
+    const dayOfMonth = today.getDate();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    sum += currentAmt; weight += dayOfMonth / daysInMonth;
+  } else if (currentAmt !== 0) {
+    sum += currentAmt; weight += 1;
+  }
+  return weight === 0 ? 0 : sum / weight;
+}
+
+function dashCategoryValue(catKey) {
+  if (dashCatMode === 'average') return dashCategoryAverage(catKey);
+  return (dashCatMonthTotals[catKey] && dashCatMonthTotals[catKey][dashCatViewMonth]) || 0;
+}
+
+function renderDashCategorySection() {
+  const catEl = document.getElementById('dash-top-categories-list');
+  if (!catEl) return;
+  const allKeys = Object.keys(dashCatMonthTotals);
+  let items;
+
+  if (dashCatDrilldown === null) {
+    const sums = {};
+    allKeys.forEach(k => {
+      const type = k === 'null' ? 'expense' : rootTypeOfCategory(Number(k), dashCatById);
+      if (type !== dashCatType) return;
+      const rootId = dashRootIdOf(k);
+      sums[rootId] = (sums[rootId] || 0) + dashCategoryValue(k);
+    });
+    items = Object.entries(sums).map(([rootId, total]) => ({
+      key: rootId,
+      name: rootId === 'null' ? 'Ongecategoriseerd' : (dashCatById[rootId] ? dashCatById[rootId].name : '?'),
+      total,
+      clickable: rootId !== 'null',
+    }));
+  } else {
+    const sums = {}, bucketMeta = {};
+    allKeys.forEach(k => {
+      if (k === 'null') return; // Ongecategoriseerd valt nooit onder een hoofdcategorie
+      if (String(dashRootIdOf(k)) !== String(dashCatDrilldown)) return;
+      const bucket = dashSubcatBucketOf(k, Number(dashCatDrilldown));
+      if (!bucket) return;
+      sums[bucket.id] = (sums[bucket.id] || 0) + dashCategoryValue(k);
+      bucketMeta[bucket.id] = bucket;
+    });
+    items = Object.entries(sums).map(([bucketId, total]) => ({
+      key: bucketId,
+      name: bucketMeta[bucketId].name,
+      total,
+      clickable: true,
+    }));
+  }
+
+  items = items.filter(it => Math.abs(it.total) > 0.001).sort((a, b) => a.total - b.total);
+  catEl.innerHTML = renderTopCategoriesChart(items);
+  catEl.querySelectorAll('.dash-bar-row').forEach(row => {
+    const key = row.dataset.key;
+    const item = items.find(it => String(it.key) === key);
+    if (!item || !item.clickable) return;
+    row.addEventListener('click', () => {
+      if (dashCatDrilldown === null) {
+        dashCatDrilldown = key;
+        renderDashCategorySection();
+      } else {
+        const catId = Number(key);
+        const monthDate = dashCatMode === 'month' ? new Date(dashCatViewMonth + '-01T00:00:00') : new Date();
+        goToTransactionsForCategory(catId, monthDate);
+      }
+    });
+  });
+
+  document.getElementById('dash-cat-type-toggle').textContent = dashCatType === 'expense' ? 'Uitgaven' : 'Inkomsten';
+  document.getElementById('dash-cat-mode-toggle').textContent = dashCatMode === 'month' ? 'Gemiddelde' : '‹ Terug naar maand';
+  document.getElementById('dash-cat-month-nav').style.display = dashCatMode === 'month' ? 'flex' : 'none';
+  document.getElementById('dash-cat-month-label').textContent = dashCatViewMonth ? formatMonthLabelNL(dashCatViewMonth) : '';
+  const breadcrumbEl = document.getElementById('dash-cat-breadcrumb');
+  if (dashCatDrilldown !== null) {
+    breadcrumbEl.style.display = 'block';
+    breadcrumbEl.textContent = '‹ Terug naar hoofdcategorieën';
+  } else {
+    breadcrumbEl.style.display = 'none';
+  }
+}
+
+document.getElementById('dash-cat-type-toggle').addEventListener('click', () => {
+  dashCatType = dashCatType === 'expense' ? 'income' : 'expense';
+  dashCatDrilldown = null;
+  renderDashCategorySection();
+});
+document.getElementById('dash-cat-mode-toggle').addEventListener('click', () => {
+  dashCatMode = dashCatMode === 'month' ? 'average' : 'month';
+  renderDashCategorySection();
+});
+document.getElementById('dash-cat-month-prev').addEventListener('click', () => {
+  const d = new Date(dashCatViewMonth + '-01T00:00:00');
+  d.setMonth(d.getMonth() - 1);
+  dashCatViewMonth = toLocalISODate(d).slice(0, 7);
+  renderDashCategorySection();
+});
+document.getElementById('dash-cat-month-next').addEventListener('click', () => {
+  const d = new Date(dashCatViewMonth + '-01T00:00:00');
+  d.setMonth(d.getMonth() + 1);
+  dashCatViewMonth = toLocalISODate(d).slice(0, 7);
+  renderDashCategorySection();
+});
+document.getElementById('dash-cat-breadcrumb').addEventListener('click', () => {
+  dashCatDrilldown = null;
+  renderDashCategorySection();
+});
+
 async function loadDashboard() {
   const { data: accounts } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
   const totalStart = (accounts || []).reduce((s, a) => s + Number(a.starting_balance), 0);
 
   const { data: txns } = await sb.from('transactions')
-    .select('date, amount, category_id, accounts!inner(scope)')
+    .select('id, date, amount, category_id, link_type, accounts!inner(scope)')
     .eq('accounts.scope', 'prive')
     .order('date', { ascending: true })
     .order('id', { ascending: true });
@@ -1284,52 +1485,57 @@ async function loadDashboard() {
     return;
   }
 
-  const { data: cats } = await sb.from('categories').select('id, parent_id, name').eq('scope', 'prive');
+  const { data: cats } = await sb.from('categories').select('id, parent_id, name, type, spread_through_month').eq('scope', 'prive');
   const catById = {};
   (cats || []).forEach(c => catById[c.id] = c);
-  function rootCategoryName(catId) {
-    let c = catById[catId];
-    if (!c) return 'Ongecategoriseerd';
-    while (c.parent_id && catById[c.parent_id]) c = catById[c.parent_id];
-    return c.name;
-  }
 
   const months = [...new Set(rows.map(t => t.date.slice(0, 7)))].sort();
 
   // Gesplitste transacties: de hoofdrij heeft category_id = null (die zou anders onterecht als
   // "Ongecategoriseerd" meetellen); in plaats daarvan boeken we elke split-rij op zijn eigen categorie.
-  const splitTxnDates = {};
-  rows.forEach(t => { splitTxnDates[t.id] = t.date; });
+  // (v3.44: 'id' ontbrak hierboven in de select, waardoor deze uitsluiting nooit werkte en
+  // gesplitste transacties zowel via de hoofdrij als via hun split-rijen meetelden — nu gefixt.)
+  const txnById = {};
+  rows.forEach(t => { txnById[t.id] = t; });
   const { data: dashSplitRows } = await sb.from('transaction_splits').select('transaction_id, category_id, amount');
   const splitParentIds = new Set((dashSplitRows || []).map(r => r.transaction_id));
 
+  // v3.44: overschrijvingen tussen eigen rekeningen zijn geen echte inkomsten/uitgaven en
+  // vervuilden zowel "Grootste (sub)categorieën" (bijna heel "Ongecategoriseerd" bleek
+  // overschrijving) als Maandsaldo — nu overal uitgesloten.
+  function isTransferTxn(t) { return t && (t.link_type === 'transfer' || t.link_type === 'offset'); }
+
   const monthlyIncome = {}, monthlyExpense = {};
-  const catTotals = {};
+  const catMonthTotals = {}; // catMonthTotals[catKey][maand] = bedrag; catKey = category_id of 'null'
+  function addCatMonth(catKey, m, amt) {
+    if (!catMonthTotals[catKey]) catMonthTotals[catKey] = {};
+    catMonthTotals[catKey][m] = (catMonthTotals[catKey][m] || 0) + amt;
+  }
   rows.forEach(t => {
     if (splitParentIds.has(t.id)) return; // deze wordt hieronder via zijn split-rijen meegeteld
+    if (isTransferTxn(t)) return;
     const m = t.date.slice(0, 7);
     const amt = Number(t.amount);
-    if (amt >= 0) {
-      monthlyIncome[m] = (monthlyIncome[m] || 0) + amt;
-    } else {
-      monthlyExpense[m] = (monthlyExpense[m] || 0) + amt;
-      const rootName = rootCategoryName(t.category_id);
-      catTotals[rootName] = (catTotals[rootName] || 0) + amt;
-    }
+    if (amt >= 0) monthlyIncome[m] = (monthlyIncome[m] || 0) + amt;
+    else monthlyExpense[m] = (monthlyExpense[m] || 0) + amt;
+    addCatMonth(t.category_id === null || t.category_id === undefined ? 'null' : t.category_id, m, amt);
   });
   (dashSplitRows || []).forEach(r => {
-    const txnDate = splitTxnDates[r.transaction_id];
-    if (!txnDate) return; // hoort niet bij een privé-transactie in deze set
-    const m = txnDate.slice(0, 7);
+    const parent = txnById[r.transaction_id];
+    if (!parent) return; // hoort niet bij een privé-transactie in deze set
+    if (isTransferTxn(parent)) return;
+    const m = parent.date.slice(0, 7);
     const amt = Number(r.amount);
-    if (amt >= 0) {
-      monthlyIncome[m] = (monthlyIncome[m] || 0) + amt;
-    } else {
-      monthlyExpense[m] = (monthlyExpense[m] || 0) + amt;
-      const rootName = rootCategoryName(r.category_id);
-      catTotals[rootName] = (catTotals[rootName] || 0) + amt;
-    }
+    if (amt >= 0) monthlyIncome[m] = (monthlyIncome[m] || 0) + amt;
+    else monthlyExpense[m] = (monthlyExpense[m] || 0) + amt;
+    addCatMonth(r.category_id === null || r.category_id === undefined ? 'null' : r.category_id, m, amt);
   });
+
+  dashCatById = catById;
+  dashCatMonthTotals = catMonthTotals;
+  dashAllMonths = months;
+  if (!dashCatViewMonth) dashCatViewMonth = toLocalISODate(new Date()).slice(0, 7);
+  renderDashCategorySection();
 
   function computeAgeUpTo(cutoffDateExclusive) {
     const entries = [];
@@ -1361,7 +1567,7 @@ async function loadDashboard() {
 
   function renderMoneyAgeChart(monthsArr, ages) {
     if (monthsArr.length === 0) return '<div class="empty">Nog geen gegevens.</div>';
-    const w = 600, h = 180, padLeft = 12, padRight = 12, padTop = 16, padBottom = 28;
+    const w = 600, h = 220, padLeft = 16, padRight = 50, padTop = 30, padBottom = 34;
     const plotW = w - padLeft - padRight, plotH = h - padTop - padBottom;
     const validAges = ages.filter(a => a !== null);
     const maxAge = Math.max(...(validAges.length ? validAges : [30]), 30);
@@ -1369,52 +1575,55 @@ async function loadDashboard() {
     const xFor = i => padLeft + i * stepX;
     const yFor = a => padTop + plotH - (a / maxAge) * plotH;
     const points = ages.map((a, i) => a === null ? null : `${xFor(i)},${yFor(a)}`).filter(Boolean).join(' ');
-    const dots = ages.map((a, i) => a === null ? '' : `<circle cx="${xFor(i)}" cy="${yFor(a)}" r="3" fill="${a > 30 ? '#f9a825' : '#1b5e20'}" data-month="${monthsArr[i]}" data-age="${a}"></circle>`).join('');
+    const dots = ages.map((a, i) => a === null ? '' : `<circle cx="${xFor(i)}" cy="${yFor(a)}" r="8" fill="${a > 30 ? '#f9a825' : '#1b5e20'}" stroke="#fff" stroke-width="2" data-month="${monthsArr[i]}" data-age="${a}"></circle>`).join('');
+    const valueLabels = ages.map((a, i) => a === null ? '' : `<text x="${xFor(i)}" y="${yFor(a) - 14}" font-size="18" font-weight="500" fill="#222" text-anchor="middle">${a}d</text>`).join('');
     const thresholdY = yFor(30);
-    const labelEvery = Math.max(1, Math.ceil(monthsArr.length / 6));
-    const labels = monthsArr.map((m, i) => (i % labelEvery === 0 || i === monthsArr.length - 1) ? `<text x="${xFor(i)}" y="${h - 8}" font-size="9" text-anchor="middle" fill="#888">${m.slice(2)}</text>` : '').join('');
+    const labelIdx = monthLabelIndices(monthsArr);
+    const labels = monthsArr.map((m, i) => labelIdx.has(i) ? `<text x="${xFor(i)}" y="${h - 10}" font-size="18" text-anchor="middle" fill="#888">${formatMonthLabelNL(m)}</text>` : '').join('');
     return `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;">
       <line x1="${padLeft}" y1="${thresholdY}" x2="${w - padRight}" y2="${thresholdY}" stroke="#f9a825" stroke-dasharray="4,3" stroke-width="1"></line>
+      <text x="${w - padRight + 6}" y="${thresholdY + 5}" font-size="16" fill="#f9a825" text-anchor="start">30 dagen</text>
       <polyline points="${points}" fill="none" stroke="#1b5e20" stroke-width="2"></polyline>
       ${dots}
+      ${valueLabels}
       ${labels}
     </svg>`;
   }
 
-  function renderTopCategoriesChart(sortedCatsArr) {
-    if (sortedCatsArr.length === 0) return '<div class="empty">Nog geen uitgaven.</div>';
-    const maxAbs = Math.max(...sortedCatsArr.map(([, t]) => Math.abs(t)), 1);
-    return sortedCatsArr.map(([name, total]) => {
-      const pct = (Math.abs(total) / maxAbs) * 100;
-      return `
-        <div class="dash-bar-row">
-          <div class="dash-bar-label">${name}</div>
-          <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%;"></div></div>
-          <div class="dash-bar-value">${formatEuro(total)}</div>
-        </div>`;
-    }).join('');
-  }
 
-  function renderMonthlySaldoChart(monthsArr, values) {
+  function renderMonthlySaldoChart(monthsArr, incomeArr, expenseArr) {
     if (monthsArr.length === 0) return '<div class="empty">Nog geen gegevens.</div>';
-    const w = 600, h = 200, padLeft = 4, padRight = 4, padTop = 12, padBottom = 28;
+    const w = 600, h = 240, padLeft = 8, padRight = 8, padTop = 40, padBottom = 34;
     const plotW = w - padLeft - padRight, plotH = h - padTop - padBottom;
-    const maxAbs = Math.max(...values.map(v => Math.abs(v)), 1);
+    const maxAbs = Math.max(...incomeArr.map(Math.abs), ...expenseArr.map(Math.abs), 1);
     const zeroY = padTop + plotH / 2;
     const slot = plotW / monthsArr.length;
-    const barW = Math.max(4, slot * 0.6);
-    const bars = values.map((v, i) => {
-      const x = padLeft + i * slot + (slot - barW) / 2;
-      const barH = (Math.abs(v) / maxAbs) * (plotH / 2);
-      const y = v >= 0 ? zeroY - barH : zeroY;
-      const color = v >= 0 ? '#43a047' : '#c62828';
-      return `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" fill="${color}" data-month="${monthsArr[i]}" data-saldo="${v}"></rect>`;
-    }).join('');
-    const labelEvery = Math.max(1, Math.ceil(monthsArr.length / 6));
-    const labels = monthsArr.map((m, i) => (i % labelEvery === 0 || i === monthsArr.length - 1) ? `<text x="${padLeft + i * slot + slot / 2}" y="${h - 8}" font-size="9" text-anchor="middle" fill="#888">${m.slice(2)}</text>` : '').join('');
+    const barW = Math.max(4, slot * 0.32);
+    const gap = Math.max(1, slot * 0.04);
+    const labelIdx = monthLabelIndices(monthsArr); // dezelfde ankerlogica ook voor de cijferlabels, anders wordt een lange reeks onleesbaar
+    let bars = '', valueLabels = '';
+    monthsArr.forEach((m, i) => {
+      const income = incomeArr[i], expense = expenseArr[i]; // expense is negatief
+      const saldo = income + expense;
+      const slotCenter = padLeft + i * slot + slot / 2;
+      const incX = slotCenter - barW - gap / 2, expX = slotCenter + gap / 2;
+      const incH = (Math.abs(income) / maxAbs) * (plotH / 2);
+      const expH = (Math.abs(expense) / maxAbs) * (plotH / 2);
+      bars += `<rect x="${incX}" y="${zeroY - incH}" width="${barW}" height="${incH}" fill="#43a047"></rect>`;
+      bars += `<rect x="${expX}" y="${zeroY}" width="${barW}" height="${expH}" fill="#c62828"></rect>`;
+      if (labelIdx.has(i)) {
+        const saldoColor = saldo >= 0 ? '#1b5e20' : '#c62828';
+        const saldoSign = saldo >= 0 ? '+' : '';
+        valueLabels += `<text x="${slotCenter}" y="${padTop - 10}" font-size="16" font-weight="500" fill="${saldoColor}" text-anchor="middle">${saldoSign}${formatEuroWhole(saldo)}</text>`;
+        valueLabels += `<text x="${incX + barW / 2}" y="${zeroY - incH - 6}" font-size="13" fill="#43a047" text-anchor="middle">${formatEuroWhole(income)}</text>`;
+        valueLabels += `<text x="${expX + barW / 2}" y="${zeroY + expH + 16}" font-size="13" fill="#c62828" text-anchor="middle">${formatEuroWhole(expense)}</text>`;
+      }
+    });
+    const labels = monthsArr.map((m, i) => labelIdx.has(i) ? `<text x="${padLeft + i * slot + slot / 2}" y="${h - 10}" font-size="18" text-anchor="middle" fill="#888">${formatMonthLabelNL(m)}</text>` : '').join('');
     return `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;">
       <line x1="${padLeft}" y1="${zeroY}" x2="${w - padRight}" y2="${zeroY}" stroke="#ccc" stroke-width="1"></line>
       ${bars}
+      ${valueLabels}
       ${labels}
     </svg>`;
   }
@@ -1425,10 +1634,7 @@ async function loadDashboard() {
     return computeAgeUpTo(toLocalISODate(nextMonth));
   }));
 
-  const sortedCats = Object.entries(catTotals).sort((a, b) => a[1] - b[1]);
-  catEl.innerHTML = renderTopCategoriesChart(sortedCats);
-
-  saldoEl.innerHTML = renderMonthlySaldoChart(months, months.map(m => (monthlyIncome[m] || 0) + (monthlyExpense[m] || 0)));
+  saldoEl.innerHTML = renderMonthlySaldoChart(months, months.map(m => monthlyIncome[m] || 0), months.map(m => monthlyExpense[m] || 0));
 }
 
 function bankSelectOptions(selected) {
@@ -3710,7 +3916,7 @@ let catModalEditId = null;
 async function openCatModal(mode, editId, presetParentId) {
   catModalMode = mode;
   catModalEditId = editId;
-  const { data: cats } = await sb.from('categories').select('id, parent_id, name, type').eq('scope', 'prive').order('sort_order');
+  const { data: cats } = await sb.from('categories').select('id, parent_id, name, type, spread_through_month').eq('scope', 'prive').order('sort_order');
   const excluded = editId ? getDescendantIds(cats, editId).add(Number(editId)) : new Set();
   const options = (cats || []).filter(c => !excluded.has(c.id))
     .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
@@ -3722,11 +3928,13 @@ async function openCatModal(mode, editId, presetParentId) {
     document.getElementById('cat-name').value = current ? current.name : '';
     document.getElementById('cat-parent').value = current && current.parent_id ? current.parent_id : '';
     document.getElementById('cat-type').value = (current && (current.type === 'income' || current.type === 'reservation')) ? current.type : 'expense';
+    document.getElementById('cat-spread').checked = !!(current && current.spread_through_month);
   } else {
     document.getElementById('cat-modal-title').textContent = 'Nieuwe categorie';
     document.getElementById('cat-name').value = '';
     document.getElementById('cat-parent').value = presetParentId || '';
     document.getElementById('cat-type').value = 'expense';
+    document.getElementById('cat-spread').checked = false;
   }
   updateCatTypeRowVisibility();
   document.getElementById('cat-modal-bg').classList.add('open');
@@ -3735,6 +3943,7 @@ async function openCatModal(mode, editId, presetParentId) {
 function updateCatTypeRowVisibility() {
   const isRoot = !document.getElementById('cat-parent').value;
   document.getElementById('cat-type-row').style.display = isRoot ? 'block' : 'none';
+  document.getElementById('cat-spread-row').style.display = isRoot ? 'none' : 'block';
 }
 document.getElementById('cat-parent').addEventListener('change', updateCatTypeRowVisibility);
 
@@ -3745,13 +3954,14 @@ document.getElementById('cat-save').addEventListener('click', async () => {
   const name = document.getElementById('cat-name').value.trim();
   const parent_id = document.getElementById('cat-parent').value || null;
   const type = parent_id ? null : document.getElementById('cat-type').value;
+  const spread_through_month = parent_id ? document.getElementById('cat-spread').checked : false;
   if (!name) { alert('Vul een naam in.'); return; }
 
   if (catModalMode === 'edit') {
-    const { error } = await sb.from('categories').update({ name, parent_id, type }).eq('id', catModalEditId);
+    const { error } = await sb.from('categories').update({ name, parent_id, type, spread_through_month }).eq('id', catModalEditId);
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
   } else {
-    const { error } = await sb.from('categories').insert({ name, parent_id, type, scope: 'prive' });
+    const { error } = await sb.from('categories').insert({ name, parent_id, type, spread_through_month, scope: 'prive' });
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
   }
   document.getElementById('cat-modal-bg').classList.remove('open');
