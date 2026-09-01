@@ -115,6 +115,7 @@
   .budget-group:not(.hoofdcat-group) > h3 .budget-num { font-size:12px; font-weight:400; }
   .budget-num.positive { color:#222; }
   .budget-num.negative { color:var(--red); }
+  .budget-num.neutral { color:#888; }
   .budget-group.hoofdcat-group > h3 { padding-left:0; font-size:14px; font-weight:500; }
   .cat-numbers { display:flex; gap:6px; align-items:center; margin-top:4px; }
   .cat-numbers .num-col { flex:1; min-width:0; text-align:center; }
@@ -123,7 +124,7 @@
   .cat-numbers .num-value.positive { color:#222; }
   .cat-numbers .num-value.negative { color:var(--red); }
   .cat-numbers .num-value.neutral { color:#888; }
-  .leaf-begroot-row { display:flex; align-items:center; gap:8px; padding:4px 0; }
+  .leaf-begroot-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 0; }
   .leaf-begroot-row .leaf-stat-label { font-size:13px; color:#666; min-width:70px; }
   .leaf-begroot-row input.assign { width:80px; flex:0 0 auto; text-align:right; border:1px solid var(--border); border-radius:4px; padding:5px 8px; font-size:14px; font-weight:400; box-sizing:border-box; }
   .leaf-stats-row { display:flex; flex-direction:column; gap:2px; margin-top:8px; }
@@ -132,6 +133,7 @@
   .leaf-stats-row .leaf-stat-value { font-size:13px; font-weight:400; color:#222; }
   .leaf-stats-row .leaf-stat-value.positive { color:#222; }
   .leaf-stats-row .leaf-stat-value.negative { color:var(--red); font-weight:600; }
+  .leaf-stats-row .leaf-stat-value.neutral { color:#888; font-weight:400; }
   .cat-detail-link { background:none; border:none; padding:0; color:var(--green); font-size:13px; cursor:pointer; text-decoration:underline; touch-action:manipulation; }
   .cat-row-summary { display:flex; align-items:center; gap:10px; cursor:pointer; padding:11px 2px; touch-action:manipulation; }
   .cat-row-summary .name { font-size:14px; font-weight:400; color:#222; flex:0 1 auto; min-width:0; overflow-wrap:break-word; }
@@ -830,7 +832,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.48';
+const APP_VERSION = 'v3.49';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -2359,6 +2361,9 @@ async function loadBudget() {
   // overschot (meer binnen dan begroot) is positief en groen, een tekort is negatief en rood —
   // dezelfde simpele regel als Uitgaven/Reserveringen, geen aparte inkomen-uitzondering meer nodig.
   function resterendClass(resterend, type) {
+    // Bij Inkomsten betekent een negatief saldo simpelweg "nog niet ontvangen" — dat is normaal
+    // gedurende de maand, geen probleem zoals overschrijding bij Uitgaven/Reserveringen dat wel is.
+    if (resterend < 0 && type === 'income') return 'neutral';
     return resterend >= 0 ? 'positive' : 'negative';
   }
 
@@ -2393,6 +2398,7 @@ async function loadBudget() {
   }
 
   function leafNumbersBlock(n, catId, type) {
+    const lastLabel = type === 'income' ? 'Saldo' : 'Resterend';
     return `
       <div class="leaf-begroot-row">
         <span class="leaf-stat-label">Begroot</span>
@@ -2400,7 +2406,7 @@ async function loadBudget() {
       </div>
       <div class="leaf-stats-row">
         <div class="leaf-stat"><span class="leaf-stat-label">Gerealiseerd</span> <span class="leaf-stat-value">${formatEuroWhole(n.gerealiseerd)}</span></div>
-        <div class="leaf-stat"><span class="leaf-stat-label">Resterend</span> <span class="leaf-stat-value ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</span></div>
+        <div class="leaf-stat"><span class="leaf-stat-label">${lastLabel}</span> <span class="leaf-stat-value ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</span></div>
       </div>`;
   }
 
@@ -4027,8 +4033,17 @@ async function moveCategory(cats, dragId, targetId, mode) {
     return;
   }
 
-  // Bestaande siblings in de nieuwe parent, zonder de gesleepte categorie
+  // Bij hoofdcategorieën (newParentId === null) delen Uitgaven/Inkomsten/Reserveringen allemaal
+  // dezelfde (lege) parent — zonder ook op type te filteren zou het herordenen van bv. een
+  // Reservering-hoofdcategorie stiekem ook de sort_order van Uitgaven/Inkomsten-hoofdcategorieën
+  // aanpassen. Subcategorieën hebben al een echte, unieke parent, dus daar is dit niet nodig.
+  function displayType(c) {
+    if (c.type === 'income') return 'income';
+    if (c.type === 'reservation') return 'reservation';
+    return 'expense';
+  }
   let siblings = cats.filter(c => (c.parent_id || null) === newParentId && c.id !== dragId)
+    .filter(c => newParentId !== null || displayType(c) === displayType(dragCat))
     .sort((a, b) => a.sort_order - b.sort_order);
 
   let insertAt = siblings.length; // default: aan het einde (mode 'inside')
