@@ -832,7 +832,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.50';
+const APP_VERSION = 'v3.51';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1666,7 +1666,9 @@ async function loadDashboard() {
   function computeAgeUpTo(cutoffDateExclusive) {
     const entries = [];
     if (totalStart > 0) entries.push({ date: rows[0].date, amount: totalStart });
-    rows.filter(t => t.date < cutoffDateExclusive).forEach(t => entries.push({ date: t.date, amount: Number(t.amount) }));
+    // v3.51: overschrijvingen tussen eigen rekeningen uitsluiten — zelfde reden als bij de
+    // header-versie van Geldleeftijd (updateMoneyAge), dit was hier nog gemist.
+    rows.filter(t => t.date < cutoffDateExclusive && t.link_type !== 'transfer' && t.link_type !== 'offset').forEach(t => entries.push({ date: t.date, amount: Number(t.amount) }));
     const queue = [];
     const outflowAges = [];
     entries.forEach(e => {
@@ -2182,12 +2184,16 @@ async function updateMoneyAge() {
   // Geldleeftijd (YNAB-stijl): mediane FIFO-leeftijd van de laatste 10 privé-uitgaven
   const { data: priveAccountsForAge } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
   const todayStr = toLocalISODate(new Date());
-  const { data: priveTxnsForAge } = await sb.from('transactions')
-    .select('date, amount, accounts!inner(scope)')
+  const { data: priveTxnsForAgeRaw } = await sb.from('transactions')
+    .select('date, amount, link_type, accounts!inner(scope)')
     .eq('accounts.scope', 'prive')
     .lte('date', todayStr)
     .order('date', { ascending: true })
     .order('id', { ascending: true });
+  // v3.51: overschrijvingen tussen eigen rekeningen zijn geen echte in-/uitstroom van geld — ze
+  // stonden hier nog als beide kanten (nep-uitgave én nep-inkomst) in de FIFO-wachtrij, wat de
+  // leeftijd flink kon vertekenen. Dezelfde uitsluiting die het Dashboard al kreeg (v3.44).
+  const priveTxnsForAge = (priveTxnsForAgeRaw || []).filter(t => t.link_type !== 'transfer' && t.link_type !== 'offset');
   const earliestDate = (priveTxnsForAge && priveTxnsForAge.length > 0) ? priveTxnsForAge[0].date : toLocalISODate(new Date());
   const ageEntries = [];
   (priveAccountsForAge || []).forEach(a => { if (Number(a.starting_balance) > 0) ageEntries.push({ date: earliestDate, amount: Number(a.starting_balance) }); });
