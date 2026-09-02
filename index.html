@@ -832,7 +832,7 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.49';
+const APP_VERSION = 'v3.50';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -2308,9 +2308,13 @@ async function loadBudget() {
   const expectedMap = {};
   (recurringRows || []).forEach(r => { if (r.category_id) expectedMap[r.category_id] = (expectedMap[r.category_id] || 0) + Number(r.amount); });
 
-  // Ready to Assign: startsaldi + alle ooit binnengekomen ongecategoriseerde privé-transacties min alles wat ooit aan
-  // UITGAVEN- en RESERVERINGS-categorieën is toegewezen. Toewijzingen aan inkomsten-categorieën tellen hier niet mee: dat
-  // is een verwacht bedrag (forward-looking target), geen echte oormerking van al beschikbaar geld.
+  // Ready to Assign: startsaldi + alle ooit binnengekomen ongecategoriseerde privé-transacties + alle
+  // ooit ontvangen én aan een Inkomsten-categorie toegewezen bedragen, min alles wat ooit aan
+  // UITGAVEN- en RESERVERINGS-categorieën is toegewezen. Toewijzingen aan inkomsten-categorieën
+  // tellen niet mee bij het "toegewezen"-deel: dat is een verwacht bedrag (forward-looking target),
+  // geen oormerking. Maar zodra het salaris echt is binnengekomen (en dus gecategoriseerd staat),
+  // is dat gewoon vrij besteedbaar geld — zonder deze regel viel dat geld tussen wal en schip:
+  // niet "ongecategoriseerd" meer, maar ook nooit ergens als "beschikbaar" meegeteld.
   const { data: priveAccountsForRta } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
   const totalStartingBalance = (priveAccountsForRta || []).reduce((s, a) => s + Number(a.starting_balance), 0);
   // Gesplitste transacties hebben ook category_id = null, maar zijn NIET "unassigned" — hun bedrag is al
@@ -2318,15 +2322,16 @@ async function loadBudget() {
   // dubbel meetellen: één keer als "unassigned" hier, en nogmaals via de split-categorieën in spentMap.
   const { data: splitTxnIdRows } = await sb.from('transaction_splits').select('transaction_id');
   const splitTxnIds = [...new Set((splitTxnIdRows || []).map(r => r.transaction_id))];
-  let unassignedQuery = sb.from('transactions').select('amount, accounts!inner(scope)').is('category_id', null).eq('accounts.scope', 'prive').lte('date', toLocalISODate(new Date()));
-  if (splitTxnIds.length > 0) unassignedQuery = unassignedQuery.not('id', 'in', `(${splitTxnIds.join(',')})`);
-  const { data: unassignedTxns } = await unassignedQuery;
-  const totalUnassigned = (unassignedTxns || []).reduce((s, r) => s + Number(r.amount), 0);
+  let rtaTxnsQuery = sb.from('transactions').select('amount, category_id, accounts!inner(scope)').eq('accounts.scope', 'prive').lte('date', toLocalISODate(new Date()));
+  if (splitTxnIds.length > 0) rtaTxnsQuery = rtaTxnsQuery.not('id', 'in', `(${splitTxnIds.join(',')})`);
+  const { data: rtaTxns } = await rtaTxnsQuery;
+  const totalUnassigned = (rtaTxns || []).filter(r => r.category_id === null).reduce((s, r) => s + Number(r.amount), 0);
+  const totalReceivedIncome = (rtaTxns || []).filter(r => r.category_id !== null && rootTypeOf(r.category_id) === 'income').reduce((s, r) => s + Number(r.amount), 0);
   const { data: allBudgetRows } = await sb.from('budget_months').select('category_id, assigned');
   const totalAssignedEver = (allBudgetRows || [])
     .filter(r => rootTypeOf(r.category_id) !== 'income')
     .reduce((s, r) => s + Number(r.assigned), 0);
-  const rta = totalStartingBalance + totalUnassigned - totalAssignedEver;
+  const rta = totalStartingBalance + totalUnassigned + totalReceivedIncome - totalAssignedEver;
   const rtaEl = document.getElementById('rta-amount');
   rtaEl.textContent = formatEuroWhole(rta);
   rtaEl.className = 'amount ' + (rta >= 0 ? 'positive' : 'negative');
