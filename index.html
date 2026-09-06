@@ -17,6 +17,8 @@
   body { font-family: -apple-system, Helvetica, Arial, sans-serif; margin:0; background:var(--bg); color:#222; }
   html { overflow-x:hidden; overscroll-behavior-x:none; }
   body { overflow-x:hidden; overscroll-behavior-x:none; }
+  #offline-banner { display:none; background:#fff3cd; color:#7a5b00; padding:8px 16px; font-size:13px; text-align:center; }
+  #offline-banner.show { display:block; }
   header { background:#1b5e20; color:#fff; padding:10px 16px; }
   header .header-top { display:flex; justify-content:space-between; align-items:center; }
   header .header-kpi { margin-top:4px; font-size:14px; font-weight:bold; text-align:center; }
@@ -211,6 +213,8 @@
   <button data-tab="dashboard" title="Dashboard"><span style="font-size:20px;">📊</span></button>
 </nav>
 </div>
+
+<div id="offline-banner"></div>
 
 <main>
   <div id="tab-budget">
@@ -832,7 +836,35 @@ const SUPABASE_URL = 'https://vlhjikyslkkekxtapzqj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_bWtpObTiK7mmEiQYHZuvgA_upVn7e2I';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const APP_VERSION = 'v3.52';
+// ---- Offline-ondersteuning: app-shell via service worker, laatst-bekende data via localStorage ----
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => console.error('Service worker registratie mislukt:', err));
+  });
+}
+
+function cacheSnapshotSet(key, dataObj) {
+  try { localStorage.setItem('snap_' + key, JSON.stringify({ data: dataObj, ts: Date.now() })); } catch (e) {}
+}
+function cacheSnapshotGet(key) {
+  try { const raw = localStorage.getItem('snap_' + key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+function formatOfflineTs(ts) {
+  const d = new Date(ts);
+  return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+}
+function showOfflineBanner(ts) {
+  const el = document.getElementById('offline-banner');
+  if (!el) return;
+  el.textContent = '⚠️ Geen verbinding — gegevens van ' + formatOfflineTs(ts);
+  el.classList.add('show');
+}
+function hideOfflineBanner() {
+  const el = document.getElementById('offline-banner');
+  if (el) el.classList.remove('show');
+}
+
+const APP_VERSION = 'v3.53';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -2251,7 +2283,30 @@ async function loadBudget() {
     .select('id, parent_id, name, sort_order, type')
     .eq('scope', 'prive')
     .order('sort_order');
-  if (cErr) { console.error(cErr); return; }
+  if (cErr) {
+    console.error(cErr);
+    const snap = cacheSnapshotGet('budget_' + monthStr);
+    const containerExpense = document.getElementById('budget-groups-expense');
+    const containerIncome = document.getElementById('budget-groups-income');
+    const containerReservation = document.getElementById('budget-groups-reservation');
+    if (snap) {
+      document.getElementById('rta-amount').textContent = snap.data.rtaText;
+      document.getElementById('rta-amount').className = snap.data.rtaClass;
+      document.getElementById('combined-total').textContent = snap.data.combinedTotalText;
+      containerExpense.innerHTML = snap.data.expenseHTML;
+      containerIncome.innerHTML = snap.data.incomeHTML;
+      containerReservation.innerHTML = snap.data.reservationHTML;
+      document.getElementById('budget-total-expense').innerHTML = snap.data.totalExpenseHTML;
+      document.getElementById('budget-total-income').innerHTML = snap.data.totalIncomeHTML;
+      document.getElementById('budget-total-reservation').innerHTML = snap.data.totalReservationHTML;
+      showOfflineBanner(snap.ts);
+    } else {
+      containerExpense.innerHTML = '<div class="empty">Geen verbinding en nog geen eerder opgeslagen gegevens voor deze maand.</div>';
+      containerIncome.innerHTML = '';
+      containerReservation.innerHTML = '';
+    }
+    return;
+  }
 
   catsById = {};
   (cats || []).forEach(c => catsById[c.id] = c);
@@ -2490,6 +2545,19 @@ async function loadBudget() {
   renderColumn(containerExpense, totalExpenseEl, expenseRoots, 'expense', 'Nog geen uitgavencategorieën.', 'Uitgaven');
   renderColumn(containerIncome, totalIncomeEl, incomeRoots, 'income', 'Nog geen inkomstencategorieën.', 'Inkomsten');
   renderColumn(containerReservation, totalReservationEl, reservationRoots, 'reservation', 'Nog geen reserveringscategorieën.', 'Reserveringen');
+
+  hideOfflineBanner();
+  cacheSnapshotSet('budget_' + monthStr, {
+    rtaText: rtaEl.textContent,
+    rtaClass: rtaEl.className,
+    combinedTotalText: document.getElementById('combined-total').textContent,
+    expenseHTML: containerExpense.innerHTML,
+    incomeHTML: containerIncome.innerHTML,
+    reservationHTML: containerReservation.innerHTML,
+    totalExpenseHTML: totalExpenseEl.innerHTML,
+    totalIncomeHTML: totalIncomeEl.innerHTML,
+    totalReservationHTML: totalReservationEl.innerHTML
+  });
 
   [containerExpense, containerIncome, containerReservation].forEach(container => {
     container.querySelectorAll('input.assign').forEach(inp => {
