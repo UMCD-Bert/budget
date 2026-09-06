@@ -886,7 +886,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.55';
+const APP_VERSION = 'v3.56';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -2738,7 +2738,18 @@ function attachCategoryPicker(input, popup, getTree, getLeaves, opts) {
 
   input.addEventListener('focus', function () { this.select(); path = []; render(''); });
   input.addEventListener('input', function () { path = []; render(this.value); });
-  input.addEventListener('blur', () => { setTimeout(() => { popup.style.display = 'none'; }, 150); });
+
+  // v3.56: sluiten op een vaste timer na blur liet de lijst verdwijnen terwijl je er nog in
+  // aan het scrollen was om een verderop staande categorie te bereiken (scrollen binnen het
+  // popup-vak blurt het invoerveld, en de 150ms-timer was vaak korter dan het zoeken duurde) --
+  // in plaats daarvan pas sluiten bij een echte tik buiten zowel het veld als het popup-vak.
+  if (popup._closeOnOutsideClick) document.removeEventListener('mousedown', popup._closeOnOutsideClick, true);
+  popup._closeOnOutsideClick = (e) => {
+    if (popup.style.display === 'none') return;
+    if (input.contains(e.target) || popup.contains(e.target)) return;
+    popup.style.display = 'none';
+  };
+  document.addEventListener('mousedown', popup._closeOnOutsideClick, true);
 }
 
 async function openRecurringOverview() {
