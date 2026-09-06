@@ -117,7 +117,7 @@
   .budget-group.hoofdcat-group { border-left:4px solid #1b5e20; padding-left:10px; background:var(--card); border-radius:6px; padding-top:8px; padding-bottom:2px; }
   .budget-group:not(.hoofdcat-group) { margin-left:16px; border-left:2px solid var(--border); padding-left:10px; }
   .budget-group > h3 { justify-content:flex-start; gap:8px; }
-  .budget-group > h3 .cat-name { flex:2; min-width:0; }
+  .budget-group > h3 .cat-name { flex:2; min-width:0; overflow-wrap:break-word; }
   .budget-num { flex:1; min-width:0; text-align:right; }
   .budget-group.hoofdcat-group > h3 .budget-num { font-size:14px; font-weight:500; }
   .budget-group:not(.hoofdcat-group) > h3 .budget-num { font-size:12px; font-weight:400; }
@@ -902,7 +902,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.57';
+const APP_VERSION = 'v3.58';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
