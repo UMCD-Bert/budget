@@ -174,6 +174,12 @@
   .amount-type-toggle button.active-income { background:var(--green); color:#fff; }
   .amount-with-steppers { display:flex; align-items:center; gap:6px; }
   .amount-with-steppers input { flex:1; }
+  .amount-row { display:flex; gap:6px; }
+  .amount-row .amount-type-toggle { flex:0 0 auto; }
+  .amount-row .amount-type-toggle button { padding:8px 10px; font-size:13px; }
+  .amount-row .amount-input-wrap { position:relative; flex:1; min-width:0; }
+  .amount-row .amount-input-wrap .euro-prefix { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#666; font-size:16px; pointer-events:none; }
+  .amount-row .amount-input-wrap input { padding-left:24px; }
   .stepper-btn { width:44px; height:38px; flex-shrink:0; border:1px solid var(--border); border-radius:6px; background:#fff; font-size:14px; cursor:pointer; touch-action:manipulation; }
   .date-picker-wrap { position:relative; }
   .dp-popup { position:absolute; z-index:50; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.15); padding:8px; width:230px; top:100%; left:0; margin-top:4px; }
@@ -518,11 +524,16 @@
       <div class="cat-popup" id="zak-txn-category-popup" style="display:none;"></div>
     </div>
     <label>Bedrag</label>
-    <div class="amount-type-toggle">
-      <button type="button" id="zak-txn-type-expense" class="active-expense">Uitgave</button>
-      <button type="button" id="zak-txn-type-income">Inkomst</button>
+    <div class="amount-row">
+      <div class="amount-type-toggle">
+        <button type="button" id="zak-txn-type-expense" class="active-expense">Uitgave</button>
+        <button type="button" id="zak-txn-type-income">Inkomst</button>
+      </div>
+      <div class="amount-input-wrap">
+        <span class="euro-prefix">€</span>
+        <input type="number" step="0.01" id="zak-txn-amount" min="0">
+      </div>
     </div>
-    <input type="number" step="0.01" id="zak-txn-amount" min="0">
     <label>Datum</label>
     <div class="date-picker-wrap">
       <input type="text" id="zak-txn-date-display" readonly placeholder="dd-mm-jjjj" style="cursor:pointer;">
@@ -734,11 +745,16 @@
       <button type="button" id="txn-detail-split-toggle-off" style="margin-top:4px; background:none; border:none; color:#888; font-size:12px; padding:0; cursor:pointer;">− Splitsing annuleren</button>
     </div>
     <label>Bedrag</label>
-    <div class="amount-type-toggle">
-      <button type="button" id="txn-detail-type-expense" class="active-expense">Uitgave</button>
-      <button type="button" id="txn-detail-type-income">Inkomst</button>
+    <div class="amount-row">
+      <div class="amount-type-toggle">
+        <button type="button" id="txn-detail-type-expense" class="active-expense">Uitgave</button>
+        <button type="button" id="txn-detail-type-income">Inkomst</button>
+      </div>
+      <div class="amount-input-wrap">
+        <span class="euro-prefix">€</span>
+        <input type="number" step="0.01" id="txn-detail-amount" min="0">
+      </div>
     </div>
-    <input type="number" step="0.01" id="txn-detail-amount" min="0">
     <label>Datum</label>
     <div class="date-picker-wrap">
       <input type="text" id="txn-detail-date-display" readonly placeholder="dd-mm-jjjj" style="cursor:pointer;">
@@ -886,7 +902,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.56';
+const APP_VERSION = 'v3.57';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
