@@ -326,7 +326,7 @@
       <div class="ie-column" data-ie-type="aliassen">
         <h3>Naam-aliassen <button class="add-sub-btn" id="payee-alias-add-toggle">+ toevoegen</button></h3>
         <div id="payee-alias-form" style="display:none; background:var(--card); border-radius:8px; padding:10px 14px; margin-bottom:10px;">
-          <p style="font-size:12px; color:#888; margin:0 0 8px;">Als de bankomschrijving (of naam) dit patroon als los woord of woordgroep bevat, wordt de naam-suggestie het alias in plaats van de standaard-afleiding. Voorkeurscategorie is optioneel (alleen privé-categorieën) en wordt dan ook meteen voorgesteld. Deze lijst vult zich ook vanzelf: bij het verwerken van een bankboeking onthoudt de app de naam en categorie die je kiest (uit te zetten met het vinkje "Onthoud voor volgende keer").</p>
+          <p style="font-size:12px; color:#888; margin:0 0 8px;">Als de bankomschrijving (of naam) dit patroon als los woord of woordgroep bevat, wordt de naam-suggestie het alias in plaats van de standaard-afleiding. Voorkeurscategorie is optioneel (alleen privé-categorieën) en wordt dan ook meteen voorgesteld. Deze lijst vult zich ook vanzelf: bij het verwerken van een bankboeking onthoudt de app de naam en categorie die je kiest (uit te zetten met het vinkje "Onthoud voor volgende keer"). Ook overschrijving-regels (⇄ naam → rekening) komen hier vanzelf bij.</p>
           <div style="display:flex; gap:6px; margin-bottom:6px;">
             <input type="text" id="payee-alias-pattern" placeholder="Patroon (bv. BCK*PLUS)" style="flex:1; min-width:0;">
             <input type="text" id="payee-alias-value" placeholder="Alias (bv. Plus)" style="flex:1; min-width:0;">
@@ -906,7 +906,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.60';
+const APP_VERSION = 'v3.61';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1050,7 +1050,7 @@ function matchPayeeAlias(row, aliases) {
     .filter(Boolean).map(t => t.toLowerCase());
   let best = null;
   for (const a of aliases) {
-    if (!a.pattern || !texts.some(t => patternMatchesText(a.pattern, t))) continue;
+    if (a.transfer_account_id || !a.pattern || !texts.some(t => patternMatchesText(a.pattern, t))) continue;
     if (!best || a.pattern.length > best.pattern.length) best = a;
   }
   return best;
@@ -1090,7 +1090,7 @@ async function loadCategoryHistoryByPayee(scope) {
 
 async function loadUnclearedForMatching(scope) {
   const { data, error } = await sb.from('transactions')
-    .select('id, account_id, date, payee, amount, accounts!inner(scope)')
+    .select('id, account_id, date, payee, amount, link_type, accounts!inner(scope)')
     .eq('accounts.scope', scope).eq('cleared', false)
     .order('date', { ascending: true }).limit(500);
   if (error) { console.error(error); return []; }
@@ -1116,7 +1116,7 @@ function findBankMatches(rows, uncleared) {
       if (c.account_id !== row.account_id) return;
       if (Math.abs(Number(c.amount) - Number(row.amount)) >= 0.005) return;
       const dd = dayDiff(c.date, row.date);
-      if (dd > RECON_MATCH_WINDOW_DAYS) return;
+      if (dd > (c.maxDays || RECON_MATCH_WINDOW_DAYS)) return;
       const overlap = tokenizeName(c.payee).filter(t => rowTokens.has(t)).length;
       pairs.push({ row, cand: c, overlap, score: Math.min(overlap, 3) * 100 - dd });
       perRow.set(row.id, (perRow.get(row.id) || 0) + 1);
@@ -1131,6 +1131,118 @@ function findBankMatches(rows, uncleared) {
     result.set(p.row.id, { cand: p.cand, others: perRow.get(p.row.id) - 1, overlap: p.overlap });
   });
   return result;
+}
+
+// ---- Overschrijvingen herkennen (v3.61) ----
+// Een bankboeking die eigenlijk een overschrijving tussen eigen rekeningen is, wordt niet als
+// uitgave/inkomst geboekt maar als gekoppeld paar (buiten begroting en Geldleeftijd). Vier bronnen,
+// in volgorde van zekerheid: (1) een bestaande overschrijving die je al met ⇄ hebt aangemaakt,
+// (2) twee bankboekingen die samen één overschrijving vormen, (3) een geleerde regel
+// (naam -> rekening), (4) een naam die letterlijk een rekeningnaam bevat. Altijd één tik.
+const TRANSFER_PAIR_WINDOW_DAYS = 3;
+const TRANSFER_LEG_WINDOW_DAYS = 3;
+
+function shiftISODate(iso, days) {
+  return new Date(Date.parse(iso + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10);
+}
+
+async function loadAccountsForTransfers() {
+  const { data, error } = await sb.from('accounts').select('id, name, scope, type, closed, enable_banking_account_uid').order('name');
+  if (error) { console.error(error); return []; }
+  return data || [];
+}
+
+// Bestaande, bevestigde overschrijving-boekingen die nog niet door een bankboeking "opgegeten" zijn.
+// Een boeking geldt als opgegeten wanneer er een al verwerkte bankboeking met dezelfde rekening,
+// hetzelfde bedrag en een datum binnen het venster bestaat (één verwerkte rij eet maximaal één boeking).
+async function loadUnconsumedTransferLegs(scope, rows) {
+  if (!rows.length) return [];
+  const dates = rows.map(r => r.date).sort();
+  const first = dates[0], last = dates[dates.length - 1];
+  const [legsRes, procRes] = await Promise.all([
+    sb.from('transactions').select('id, account_id, date, payee, amount, cleared, accounts!inner(scope)')
+      .eq('accounts.scope', scope).eq('link_type', 'transfer')
+      .gte('date', shiftISODate(first, -TRANSFER_LEG_WINDOW_DAYS)).lte('date', shiftISODate(last, TRANSFER_LEG_WINDOW_DAYS)),
+    sb.from('bank_transactions_staging').select('id, account_id, date, amount, accounts!inner(scope)')
+      .eq('accounts.scope', scope).not('processed_at', 'is', null)
+      .gte('date', shiftISODate(first, -2 * TRANSFER_LEG_WINDOW_DAYS)).lte('date', shiftISODate(last, 2 * TRANSFER_LEG_WINDOW_DAYS))
+  ]);
+  // Liever geen voorstel dan een verkeerd voorstel.
+  if (legsRes.error) { console.error(legsRes.error); return []; }
+  if (procRes.error) { console.error(procRes.error); return []; }
+  const legs = (legsRes.data || []).filter(l => l.cleared); // onbevestigde staan al in de gewone kandidatenlijst
+  const consumed = new Set();
+  const keyOf = (acc, amt) => acc + '|' + Number(amt).toFixed(2);
+  (procRes.data || []).slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)).forEach(p => {
+    let best = null, bestDd = Infinity;
+    legs.forEach(l => {
+      if (consumed.has(l.id) || keyOf(l.account_id, l.amount) !== keyOf(p.account_id, p.amount)) return;
+      const dd = dayDiff(l.date, p.date);
+      if (dd <= TRANSFER_LEG_WINDOW_DAYS && dd < bestDd) { best = l; bestDd = dd; }
+    });
+    if (best) consumed.add(best.id);
+  });
+  return legs.filter(l => !consumed.has(l.id)).map(l => ({ ...l, isTransferLeg: true, maxDays: TRANSFER_LEG_WINDOW_DAYS }));
+}
+
+// Twee openstaande bankboekingen op verschillende rekeningen met tegengesteld teken, hetzelfde
+// bedrag en een datum binnen het venster. Return: Map(rij-id -> de andere rij), wederzijds.
+function findTransferPairs(rows, blockedIds) {
+  const cands = [];
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = i + 1; j < rows.length; j++) {
+      const a = rows[i], b = rows[j];
+      if (blockedIds.has(a.id) || blockedIds.has(b.id) || a.account_id === b.account_id) continue;
+      if (Number(a.amount) === 0 || Math.abs(Number(a.amount) + Number(b.amount)) >= 0.005) continue;
+      const dd = dayDiff(a.date, b.date);
+      if (dd <= TRANSFER_PAIR_WINDOW_DAYS) cands.push({ a, b, dd });
+    }
+  }
+  cands.sort((x, y) => x.dd - y.dd);
+  const used = new Set(), result = new Map();
+  cands.forEach(({ a, b }) => {
+    if (used.has(a.id) || used.has(b.id)) return;
+    used.add(a.id); used.add(b.id);
+    result.set(a.id, b); result.set(b.id, a);
+  });
+  return result;
+}
+
+// Geleerde regel (langste patroon wint), anders een naam die een rekeningnaam als los woord bevat.
+function suggestTransferAccount(row, aliases, accounts) {
+  const texts = [row.payee, deriveStableName(row.raw_description), row.raw_description]
+    .filter(Boolean).map(t => t.toLowerCase());
+  let rule = null;
+  for (const a of aliases) {
+    if (!a.transfer_account_id || !a.pattern || Number(a.transfer_account_id) === Number(row.account_id)) continue;
+    // Een regel geldt voor de bankrekening waarop hij geleerd is (leeg = voor alle): je eigen naam
+    // komt op elke rekening voor en betekent daar steeds een andere tegenrekening.
+    if (a.transfer_for_account_id && Number(a.transfer_for_account_id) !== Number(row.account_id)) continue;
+    if (!texts.some(t => patternMatchesText(a.pattern, t))) continue;
+    const better = !rule
+      || (!!a.transfer_for_account_id && !rule.transfer_for_account_id)
+      || (!!a.transfer_for_account_id === !!rule.transfer_for_account_id && a.pattern.length > rule.pattern.length);
+    if (better) rule = a;
+  }
+  if (rule && accounts.some(a => a.id === rule.transfer_account_id && !a.closed)) {
+    return { accountId: rule.transfer_account_id, source: 'rule', aliasId: rule.id };
+  }
+  let best = null;
+  accounts.forEach(a => {
+    if (a.closed || a.id === row.account_id) return;
+    if (texts.some(t => patternMatchesText(a.name, t)) && (!best || a.name.length > best.name.length)) best = a;
+  });
+  return best ? { accountId: best.id, source: 'name', aliasId: null } : null;
+}
+
+// Kandidaat is (een kant van) een overschrijving: al bevestigd, of onbevestigd door de app zelf aangemaakt.
+function isTransferCandidate(c) { return !!(c.isTransferLeg || c.link_type === 'transfer'); }
+
+function transferOptionsHtml(accounts, row, selectedId) {
+  return '<option value="">Kies rekening…</option>' + accounts
+    .filter(a => !a.closed && a.id !== row.account_id)
+    .map(a => `<option value="${a.id}"${a.id === selectedId ? ' selected' : ''}>${escapeHtml(a.name)}${row.accounts && a.scope !== row.accounts.scope ? ' (' + (a.scope === 'zakelijk' ? 'zakelijk' : 'privé') + ')' : ''}</option>`)
+    .join('');
 }
 
 async function loadStagingList(scope) {
@@ -1148,33 +1260,68 @@ async function loadStagingList(scope) {
     listEl.innerHTML = '<div class="empty" style="font-size:13px;">Geen openstaande bank-transacties.</div>';
     return;
   }
-  const [aliases, hist, uncleared, { leaves }] = await Promise.all([
-    loadPayeeAliases(), loadCategoryHistoryByPayee(scope), loadUnclearedForMatching(scope), buildCategoryData(scope)
+  const [aliases, hist, uncleared, { leaves }, accounts, transferLegs] = await Promise.all([
+    loadPayeeAliases(), loadCategoryHistoryByPayee(scope), loadUnclearedForMatching(scope), buildCategoryData(scope),
+    loadAccountsForTransfers(), loadUnconsumedTransferLegs(scope, rows)
   ]);
   if (seq !== stagingLoadSeq[scope]) return;
   const leafLabel = new Map(leaves.map(l => [l.id, l.label]));
-  const matches = findBankMatches(rows, uncleared);
+  const accountsById = new Map(accounts.map(a => [a.id, a]));
+  const matches = findBankMatches(rows, uncleared.concat(transferLegs));
+  // Een rij die al bij een bestaande overschrijving past krijgt géén nieuw overschrijving-voorstel (dubbel boeken).
+  const legMatched = new Set([...matches].filter(([, m]) => isTransferCandidate(m.cand)).map(([id]) => id));
+  const pairs = findTransferPairs(rows, legMatched);
 
   listEl.innerHTML = '';
   rows.forEach(row => {
     const sugg = suggestForBankRow(row, aliases, hist, leafLabel);
     const match = matches.get(row.id) || null;
+    const pairRow = pairs.get(row.id) || null;
+    const tSugg = (!legMatched.has(row.id) && !pairRow) ? suggestTransferAccount(row, aliases, accounts) : null;
+    const key = bankRowKey(row);
     const div = document.createElement('div');
     div.style.cssText = 'border-top:1px solid var(--border); padding:8px 0; font-size:13px;';
     const amountColor = Number(row.amount) >= 0 ? 'var(--green)' : 'var(--red)';
     const shortCat = sugg.categoryLabel ? sugg.categoryLabel.split(' › ').pop() : '';
+    const boxStyle = 'display:flex; gap:8px; align-items:center; justify-content:space-between; background:#f5f5f5; border-radius:6px; padding:6px 8px; margin-top:6px;';
+    const nbEuro = v => formatEuro(v).replace(' ', ' ');
+
     let matchHtml = '';
     if (match) {
       const extra = (match.others > 0 ? ` <span style="color:#999;">(+${match.others} andere met hetzelfde bedrag)</span>` : '')
-        + (match.overlap === 0 ? ' <span style="color:#999;">(andere naam)</span>' : '');
+        + (!isTransferCandidate(match.cand) && match.overlap === 0 ? ' <span style="color:#999;">(andere naam)</span>' : '');
       matchHtml = `
-      <div style="display:flex; gap:8px; align-items:center; justify-content:space-between; background:#f5f5f5; border-radius:6px; padding:6px 8px; margin-top:6px;">
-        <span style="min-width:0; overflow-wrap:anywhere;">🔁 Lijkt op: <b>${escapeHtml(match.cand.payee || '(geen payee)')}</b>, ${formatDateNL(match.cand.date)}, ${formatEuro(match.cand.amount).replace(' ', ' ')}${extra}</span>
+      <div style="${boxStyle}">
+        <span style="min-width:0; overflow-wrap:anywhere;">🔁 Lijkt op${isTransferCandidate(match.cand) ? ' jouw overschrijving' : ''}: <b>${escapeHtml(match.cand.payee || '(geen payee)')}</b>, ${formatDateNL(match.cand.date)}, ${nbEuro(match.cand.amount)}${extra}</span>
         <button class="btn-save recon-link-btn" style="padding:4px 8px; font-size:12px; white-space:nowrap; flex-shrink:0;">Ja, koppel</button>
       </div>`;
     }
+
+    let transferHtml = '';
+    if (pairRow) {
+      const otherAcc = accountsById.get(pairRow.account_id);
+      transferHtml = `
+      <div style="${boxStyle}">
+        <span style="min-width:0; overflow-wrap:anywhere;">⇄ Zelfde overschrijving als: <b>${escapeHtml(otherAcc ? otherAcc.name : '?')}</b>, ${formatDateNL(pairRow.date)}, ${nbEuro(pairRow.amount)} <span style="color:#999;">(staat ook in deze lijst)</span></span>
+        <button class="btn-save recon-pair-btn" style="padding:4px 8px; font-size:12px; flex-shrink:0;">Boek als overschrijving</button>
+      </div>`;
+    } else {
+      transferHtml = `
+      <div class="recon-transfer" style="display:${tSugg ? 'block' : 'none'}; background:#f5f5f5; border-radius:6px; padding:6px 8px; margin-top:6px;">
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <span>⇄ Overschrijving ${Number(row.amount) < 0 ? 'naar' : 'van'}</span>
+          <select class="recon-transfer-select" style="flex:1; min-width:120px; width:auto; padding:4px; font-size:12px;">${transferOptionsHtml(accounts, row, tSugg ? tSugg.accountId : null)}</select>
+          <button class="btn-save recon-transfer-btn" style="padding:4px 8px; font-size:12px;">Boek</button>
+        </div>
+        ${key ? `<label style="display:flex; align-items:flex-start; gap:6px; margin-top:4px; font-size:12px; color:#666;"><input type="checkbox" class="recon-transfer-learn" style="width:auto; margin-top:2px;" checked> <span style="overflow-wrap:anywhere;">Onthoud "${escapeHtml(key)}" voor volgende keer</span></label>` : ''}
+      </div>`;
+    }
+
     const quickHtml = sugg.categoryId
       ? `<button class="btn-save recon-quick-btn" style="padding:4px 8px; font-size:12px; text-align:left; max-width:100%; overflow-wrap:anywhere;">✓ Verwerk als ${escapeHtml(sugg.name)} · ${escapeHtml(shortCat)}</button>`
+      : '';
+    const toggleHtml = (!pairRow && !tSugg)
+      ? '<button class="btn-save recon-transfer-toggle" style="padding:4px 8px; font-size:12px;">⇄ Overschrijving</button>'
       : '';
     div.innerHTML = `
       <div style="display:flex; justify-content:space-between; gap:8px;">
@@ -1183,9 +1330,11 @@ async function loadStagingList(scope) {
       </div>
       <div style="color:#999; font-size:12px; overflow-wrap:anywhere;">${escapeHtml(row.raw_description || '')}</div>
       ${matchHtml}
+      ${transferHtml}
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">
         ${quickHtml}
         <button class="btn-save recon-new-btn" style="padding:4px 8px; font-size:12px;">Nieuwe transactie</button>
+        ${toggleHtml}
         <button class="btn-save recon-existing-btn" style="padding:4px 8px; font-size:12px;">Koppel aan bestaande</button>
         <button class="btn-cancel recon-ignore-btn" style="padding:4px 8px; font-size:12px;">Negeren</button>
       </div>
@@ -1196,6 +1345,16 @@ async function loadStagingList(scope) {
     div.querySelector('.recon-ignore-btn').addEventListener('click', () => reconIgnoreRow(row.id, scope));
     if (match) div.querySelector('.recon-link-btn').addEventListener('click', (e) => reconLinkMatch(row, match.cand, scope, e.currentTarget));
     if (sugg.categoryId) div.querySelector('.recon-quick-btn').addEventListener('click', (e) => reconQuickProcess(row, scope, sugg, e.currentTarget));
+    if (pairRow) {
+      div.querySelector('.recon-pair-btn').addEventListener('click', (e) => reconBookPair(row, pairRow, scope, accountsById, e.currentTarget));
+    } else {
+      div.querySelector('.recon-transfer-btn').addEventListener('click', (e) => reconBookTransfer(row, scope, div, key, tSugg, accountsById, e.currentTarget));
+      const toggle = div.querySelector('.recon-transfer-toggle');
+      if (toggle) toggle.addEventListener('click', () => {
+        div.querySelector('.recon-transfer').style.display = 'block';
+        toggle.style.display = 'none';
+      });
+    }
     listEl.appendChild(div);
   });
 }
@@ -1217,9 +1376,9 @@ async function markStagingProcessed(id) {
 // Eén tik: de voorgestelde bestaande transactie wordt bevestigd en neemt de bankdatum over.
 async function reconLinkMatch(row, cand, scope, btn) {
   btn.disabled = true;
-  const { data, error } = await sb.from('transactions')
-    .update({ cleared: true, date: row.date })
-    .eq('id', cand.id).eq('cleared', false).select('id');
+  let upd = sb.from('transactions').update({ cleared: true, date: row.date }).eq('id', cand.id);
+  if (!cand.isTransferLeg) upd = upd.eq('cleared', false); // een bestaande (al bevestigde) overschrijving hoeft die guard niet
+  const { data, error } = await upd.select('id');
   if (error) { console.error(error); alert('Koppelen mislukt.'); btn.disabled = false; return; }
   if (!data || data.length === 0) {
     alert('Die transactie is inmiddels al bevestigd of verwijderd; de lijst wordt ververst.');
@@ -1242,6 +1401,71 @@ async function reconQuickProcess(row, scope, sugg, btn) {
   await refreshAfterReconWrite(scope);
 }
 
+// Eén tik: de bankboeking wordt een overschrijving met de gekozen rekening. De bankkant is
+// bevestigd; de andere kant ook, tenzij die rekening zelf via de bank binnenkomt — dan blijft die
+// onbevestigd tot zijn eigen boeking er is (het koppel-voorstel pakt die dan met één tik op).
+async function reconBookTransfer(row, scope, rowEl, key, tSugg, accountsById, btn) {
+  const otherId = Number(rowEl.querySelector('.recon-transfer-select').value);
+  if (!otherId) { alert('Kies eerst de andere rekening.'); return; }
+  const own = accountsById.get(row.account_id), other = accountsById.get(otherId);
+  if (!own || !other) { alert('Rekening niet gevonden; ververs de lijst en probeer opnieuw.'); return; }
+  btn.disabled = true;
+  const outgoing = Number(row.amount) < 0;
+  const otherCleared = !(other.type === 'checking' && !!other.enable_banking_account_uid);
+  const result = await createTransferPair(
+    outgoing ? own : other, outgoing ? other : own, Math.abs(Number(row.amount)), row.date, row.date,
+    outgoing ? true : otherCleared, outgoing ? otherCleared : true
+  );
+  if (result.error) { alert(result.error); btn.disabled = false; return; }
+  const learnBox = rowEl.querySelector('.recon-transfer-learn');
+  if (learnBox && learnBox.checked) await learnTransferAlias(key, row, otherId, tSugg);
+  if (!(await markStagingProcessed(row.id))) alert('De overschrijving is aangemaakt, maar de bankboeking kon niet als verwerkt worden gemarkeerd.');
+  await refreshAfterReconWrite(scope);
+}
+
+// Eén tik: twee bankboekingen die samen één overschrijving vormen worden één gekoppeld paar.
+async function reconBookPair(row, other, scope, accountsById, btn) {
+  const outRow = Number(row.amount) < 0 ? row : other;
+  const inRow = outRow === row ? other : row;
+  const fromAcc = accountsById.get(outRow.account_id), toAcc = accountsById.get(inRow.account_id);
+  if (!fromAcc || !toAcc) { alert('Rekening niet gevonden; ververs de lijst en probeer opnieuw.'); return; }
+  btn.disabled = true;
+  const result = await createTransferPair(fromAcc, toAcc, Math.abs(Number(outRow.amount)), outRow.date, inRow.date);
+  if (result.error) { alert(result.error); btn.disabled = false; return; }
+  const ok1 = await markStagingProcessed(outRow.id);
+  const ok2 = await markStagingProcessed(inRow.id);
+  if (!ok1 || !ok2) alert('De overschrijving is aangemaakt, maar een bankboeking kon niet als verwerkt worden gemarkeerd.');
+  await refreshAfterReconWrite(scope);
+}
+
+// Onthoudt "naam -> rekening" als overschrijving-regel (payee_aliases.transfer_account_id).
+async function learnTransferAlias(key, row, accountId, tSugg) {
+  const pattern = (key || '').trim();
+  if (!pattern) return;
+  if (tSugg && tSugg.source === 'name' && tSugg.accountId === accountId) return; // de naam bevat de rekeningnaam al, niets te onthouden
+  if (!aliasTransferColumnAvailable) {
+    alert('De overschrijving is geboekt. Onthouden lukt pas nadat de SQL-update voor overschrijving-regels is uitgevoerd.');
+    return;
+  }
+  try {
+    const aliases = await loadPayeeAliases();
+    // Alleen een regel van déze bankrekening wordt bijgewerkt; een algemene regel (zonder rekening) laten we staan.
+    const existing = aliases.find(a => a.transfer_account_id && Number(a.transfer_for_account_id) === Number(row.account_id)
+      && (a.pattern || '').trim().toLowerCase() === pattern.toLowerCase());
+    if (existing) {
+      if (existing.transfer_account_id === accountId) return;
+      const { error } = await sb.from('payee_aliases').update({ transfer_account_id: accountId }).eq('id', existing.id);
+      if (error) throw error;
+    } else {
+      const { error } = await sb.from('payee_aliases').insert({ pattern, alias: pattern, category_id: null, transfer_account_id: accountId, transfer_for_account_id: row.account_id });
+      if (error) throw error;
+    }
+    invalidatePayeeAliasesCache();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
 // "Onthoud voor volgende keer": naam (en, voor privé, categorie) van de zojuist verwerkte boeking
 // vastleggen als alias. Alleen als er iets te onthouden valt: een bestaand alias bijwerken, of een
 // nieuw alias maken wanneer de gekozen naam afwijkt van wat de bank/afleiding gaf (zelfde naam +
@@ -1256,6 +1480,7 @@ async function learnPayeeAlias(learn, payee, categoryId) {
     let aliasId = learn.aliasId;
     if (!aliasId && key) {
       const dup = aliases.find(a => (a.pattern || '').trim().toLowerCase() === key.toLowerCase());
+      if (dup && dup.transfer_account_id) return; // dit patroon is een overschrijving-regel; die laten we met rust
       if (dup) aliasId = dup.id;
     }
     if (aliasId) {
@@ -1280,11 +1505,21 @@ let payeeAliasesCache = null;
 
 function invalidatePayeeAliasesCache() { payeeAliasesCache = null; }
 
+// transfer_account_id/transfer_for_account_id (overschrijving-regels) zijn een latere SQL-toevoeging; zolang die kolom nog
+// niet bestaat werkt alles gewoon door zonder overschrijving-regels.
+let aliasTransferColumnAvailable = true;
+
 async function loadPayeeAliases() {
   if (payeeAliasesCache) return payeeAliasesCache;
-  const { data, error } = await sb.from('payee_aliases').select('id, pattern, alias, category_id').order('pattern');
-  if (error) { console.error(error); return []; }
-  payeeAliasesCache = data || [];
+  let res = await sb.from('payee_aliases').select('id, pattern, alias, category_id, transfer_account_id, transfer_for_account_id').order('pattern');
+  if (res.error && /transfer_(for_)?account_id/.test(res.error.message || '')) {
+    aliasTransferColumnAvailable = false;
+    res = await sb.from('payee_aliases').select('id, pattern, alias, category_id').order('pattern');
+  } else if (!res.error) {
+    aliasTransferColumnAvailable = true;
+  }
+  if (res.error) { console.error(res.error); return []; }
+  payeeAliasesCache = res.data || [];
   return payeeAliasesCache;
 }
 
@@ -1318,11 +1553,16 @@ async function loadPayeeAliasList() {
     listEl.innerHTML = '<div class="empty" style="font-size:13px;">Nog geen aliassen.</div>';
     return;
   }
+  const accountList = aliases.some(a => a.transfer_account_id) ? await loadAccountsForTransfers() : [];
   listEl.innerHTML = aliases.map(a => {
     const catLabel = a.category_id ? (aliasCatLeaves.find(l => l.id === a.category_id)?.label || '') : '';
+    const target = a.transfer_account_id
+      ? '⇄ ' + escapeHtml(accountList.find(x => x.id === a.transfer_account_id)?.name || 'onbekende rekening')
+        + (a.transfer_for_account_id ? ' <span style="color:#999;">(op ' + escapeHtml(accountList.find(x => x.id === a.transfer_for_account_id)?.name || '?') + ')</span>' : '')
+      : escapeHtml(a.alias) + (catLabel ? ' <span style="color:#999;">(' + escapeHtml(catLabel) + ')</span>' : '');
     return `
     <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-top:1px solid var(--border); font-size:13px;">
-      <span>${a.pattern} → ${a.alias}${catLabel ? ' <span style="color:#999;">(' + catLabel + ')</span>' : ''}</span>
+      <span style="min-width:0; overflow-wrap:anywhere;">${escapeHtml(a.pattern)} → ${target}</span>
       <button type="button" class="payee-alias-delete-btn" data-id="${a.id}" style="border:none; background:none; color:var(--red); font-weight:bold; cursor:pointer;">×</button>
     </div>
   `;
@@ -4158,6 +4398,38 @@ document.getElementById('transfer-cancel').addEventListener('click', () => {
   document.getElementById('transfer-modal-bg').classList.remove('open');
 });
 
+// Maakt de twee gekoppelde boekingen van een overschrijving (van -> naar), inclusief de
+// privé-categorie bij een overschrijving tussen privé en zakelijk. Gedeeld door het
+// ⇄-scherm en de bankreconciliatie. cleared per kant apart instelbaar: een kant die nog uit de
+// bank moet binnenkomen wordt als onbevestigd aangemaakt zodat het koppel-voorstel hem oppakt.
+async function createTransferPair(fromAcc, toAcc, amount, fromDate, toDate, fromCleared = true, toCleared = true) {
+  let fromCategoryId = null, toCategoryId = null;
+  if (fromAcc.scope !== toAcc.scope) {
+    const priveCatName = fromAcc.scope === 'prive' ? 'Zakelijke uitgave' : 'Zakelijke inkomsten';
+    const { data: cat } = await sb.from('categories').select('id').eq('scope', 'prive').eq('name', priveCatName).single();
+    if (!cat) return { error: `Categorie "${priveCatName}" niet gevonden — draai de SQL-update voor overschrijvingen.` };
+    if (fromAcc.scope === 'prive') fromCategoryId = cat.id; else toCategoryId = cat.id;
+  }
+
+  const { data: fromTxn, error: e1 } = await sb.from('transactions')
+    .insert({ account_id: fromAcc.id, category_id: fromCategoryId, payee: `Overschrijving naar ${toAcc.name}`, amount: -amount, date: fromDate, cleared: fromCleared, link_type: 'transfer' })
+    .select().single();
+  if (e1) { console.error(e1); return { error: 'Overschrijving mislukt.' }; }
+
+  const { data: toTxn, error: e2 } = await sb.from('transactions')
+    .insert({ account_id: toAcc.id, category_id: toCategoryId, payee: `Overschrijving van ${fromAcc.name}`, amount: amount, date: toDate, cleared: toCleared, link_type: 'transfer' })
+    .select().single();
+  if (e2) {
+    console.error(e2);
+    await sb.from('transactions').delete().eq('id', fromTxn.id); // geen halve overschrijving achterlaten
+    return { error: 'Overschrijving mislukt (tweede boeking).' };
+  }
+
+  await sb.from('transactions').update({ linked_transaction_id: toTxn.id }).eq('id', fromTxn.id);
+  await sb.from('transactions').update({ linked_transaction_id: fromTxn.id }).eq('id', toTxn.id);
+  return { fromTxn, toTxn };
+}
+
 document.getElementById('transfer-save').addEventListener('click', async () => {
   const fromId = Number(document.getElementById('transfer-from').value);
   const toId = Number(document.getElementById('transfer-to').value);
@@ -4171,26 +4443,8 @@ document.getElementById('transfer-save').addEventListener('click', async () => {
   const fromAcc = accounts.find(a => a.id === fromId);
   const toAcc = accounts.find(a => a.id === toId);
 
-  let fromCategoryId = null, toCategoryId = null;
-  if (fromAcc.scope !== toAcc.scope) {
-    const priveCatName = fromAcc.scope === 'prive' ? 'Zakelijke uitgave' : 'Zakelijke inkomsten';
-    const { data: cat } = await sb.from('categories').select('id').eq('scope', 'prive').eq('name', priveCatName).single();
-    if (!cat) { alert(`Categorie "${priveCatName}" niet gevonden — draai de SQL-update voor overschrijvingen.`); return; }
-    if (fromAcc.scope === 'prive') fromCategoryId = cat.id; else toCategoryId = cat.id;
-  }
-
-  const { data: fromTxn, error: e1 } = await sb.from('transactions')
-    .insert({ account_id: fromId, category_id: fromCategoryId, payee: `Overschrijving naar ${toAcc.name}`, amount: -amount, date, cleared: true, link_type: 'transfer' })
-    .select().single();
-  if (e1) { console.error(e1); alert('Overschrijving mislukt.'); return; }
-
-  const { data: toTxn, error: e2 } = await sb.from('transactions')
-    .insert({ account_id: toId, category_id: toCategoryId, payee: `Overschrijving van ${fromAcc.name}`, amount: amount, date, cleared: true, link_type: 'transfer' })
-    .select().single();
-  if (e2) { console.error(e2); alert('Overschrijving mislukt (tweede boeking).'); return; }
-
-  await sb.from('transactions').update({ linked_transaction_id: toTxn.id }).eq('id', fromTxn.id);
-  await sb.from('transactions').update({ linked_transaction_id: fromTxn.id }).eq('id', toTxn.id);
+  const result = await createTransferPair(fromAcc, toAcc, amount, date, date);
+  if (result.error) { alert(result.error); return; }
 
   document.getElementById('transfer-modal-bg').classList.remove('open');
   loadAccounts();
