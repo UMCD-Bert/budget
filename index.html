@@ -350,7 +350,7 @@
         <button class="btn-save" id="add-txn-btn" style="flex:1; padding:10px;">+ Nieuwe transactie</button>
         <button class="btn-cancel" id="add-transfer-btn" style="flex:1; padding:10px;">⇄ Overschrijving</button>
       </div>
-      <div style="text-align:left; margin-bottom:6px; display:flex; gap:8px; align-items:center;">
+      <div style="text-align:left; margin-bottom:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
         <button class="select-toggle-btn" id="main-select-toggle">Selecteren</button>
         <button class="select-toggle-btn" id="account-filter-toggle">Filter op rekening</button>
         <button class="select-toggle-btn" id="txn-category-filter-toggle">Filter op categorie</button>
@@ -906,7 +906,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.59';
+const APP_VERSION = 'v3.60';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
