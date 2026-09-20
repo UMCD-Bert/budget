@@ -184,6 +184,13 @@
   .date-picker-wrap { position:relative; }
   .dp-popup { position:absolute; z-index:50; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.15); padding:8px; width:230px; top:100%; left:0; margin-top:4px; }
   .cat-popup { position:absolute; z-index:50; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.15); top:100%; left:0; right:0; margin-top:4px; max-height:260px; overflow-y:auto; }
+  /* v3.62: ✕ om een tekstveld in één tik leeg te maken. Zichtbaar zodra er tekst in staat (via
+     :placeholder-shown, dus ook als de app het veld zelf invult). Tikvlak 40px, icoon 18px. */
+  .clear-wrap { position:relative; display:block; }
+  .clear-wrap > input { display:block; width:100%; padding-right:36px !important; }
+  .clear-x { display:none; position:absolute; top:0; bottom:0; right:0; width:40px; padding:0; border:none; background:none; cursor:pointer; align-items:center; justify-content:center; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+  .clear-x::before { content:'×'; display:flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:#c4c4c4; color:#fff; font-size:15px; line-height:1; padding-bottom:1px; }
+  .clear-wrap > input:not(:placeholder-shown) + .clear-x { display:flex; }
   .cat-popup-option { padding:10px 12px; cursor:pointer; border-bottom:1px solid #f0f0f0; touch-action:manipulation; }
   .cat-popup-option:last-child { border-bottom:none; }
   .cat-popup-option.cat-popup-empty { color:#888; font-style:italic; }
@@ -906,7 +913,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.61';
+const APP_VERSION = 'v3.62';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1753,6 +1760,43 @@ function formatDateNL(dateStr) {
   const [y, m, d] = dateStr.split('-');
   return `${d}-${m}-${y}`;
 }
+
+// ---- ✕ in tekstvelden (v3.62) ----
+// Wikkelt het veld in een .clear-wrap en voegt een ✕ toe. Tik: veld leeg, 'input'-event (zodat bv. het
+// zoekveld meteen terugfiltert) en de cursor blijft in het veld. fireChange voor velden die pas op
+// 'change' opslaan. Veranderingen door de app zelf (input.value = ...) tonen de ✕ vanzelf via CSS.
+function addClearButton(input, opts = {}) {
+  if (!input || !input.parentNode || input.parentNode.classList.contains('clear-wrap')) return;
+  if (!input.hasAttribute('placeholder')) input.setAttribute('placeholder', ' '); // :placeholder-shown heeft een placeholder nodig
+  const cs = getComputedStyle(input);
+  const wrap = document.createElement('span');
+  wrap.className = 'clear-wrap';
+  wrap.style.marginTop = cs.marginTop;
+  wrap.style.marginBottom = cs.marginBottom;
+  if (input.style.flex) { wrap.style.flex = input.style.flex; wrap.style.minWidth = '0'; }
+  input.style.marginTop = '0';
+  input.style.marginBottom = '0';
+  input.parentNode.insertBefore(wrap, input);
+  wrap.appendChild(input);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'clear-x';
+  btn.tabIndex = -1;
+  btn.setAttribute('aria-label', opts.label || 'Veld leegmaken');
+  btn.addEventListener('mousedown', e => e.preventDefault()); // focus (en toetsenbord) blijft in het veld
+  btn.addEventListener('click', () => {
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    if (opts.fireChange) input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.focus();
+  });
+  wrap.appendChild(btn);
+}
+addClearButton(document.getElementById('main-txn-search'), { label: 'Zoekveld leegmaken' });
+addClearButton(document.getElementById('zak-txn-search'), { label: 'Zoekveld leegmaken' });
+addClearButton(document.getElementById('txn-detail-payee'), { label: 'Payee leegmaken' });
+addClearButton(document.getElementById('zak-txn-payee'), { label: 'Payee leegmaken' });
+addClearButton(document.getElementById('txn-detail-notitie'), { label: 'Opmerking leegmaken' });
 
 // ---- Eigen datumkiezer ----
 function setDateValue(hiddenId, iso) {
@@ -3294,6 +3338,7 @@ async function openRecurringOverview() {
       });
     });
 
+    el.querySelectorAll('.recurring-payee-input').forEach(inp => addClearButton(inp, { label: 'Naam leegmaken', fireChange: true }));
     el.querySelectorAll('.recurring-payee-input').forEach(inp => {
       inp.addEventListener('change', async () => {
         const row = inp.closest('.recurring-overview-row');
