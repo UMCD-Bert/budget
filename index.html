@@ -191,6 +191,7 @@
   .clear-x { display:none; position:absolute; top:0; bottom:0; right:0; width:40px; padding:0; border:none; background:none; cursor:pointer; align-items:center; justify-content:center; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
   .clear-x::before { content:'×'; display:flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:#c4c4c4; color:#fff; font-size:15px; line-height:1; padding-bottom:1px; }
   .clear-wrap > input:not(:placeholder-shown) + .clear-x { display:flex; }
+  .date-group-heading.pending-heading { color:#a86200; }
   .cat-popup-option { padding:10px 12px; cursor:pointer; border-bottom:1px solid #f0f0f0; touch-action:manipulation; }
   .cat-popup-option:last-child { border-bottom:none; }
   .cat-popup-option.cat-popup-empty { color:#888; font-style:italic; }
@@ -913,7 +914,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.64';
+const APP_VERSION = 'v3.65';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -2612,15 +2613,19 @@ function sortUnclearedToBottom(rows) {
 
 function renderTransactionRows(rows, opts) {
   const bulkOn = bulkModeState[opts.context];
+  const pending = opts.pendingRows || [];
   txnAmountState[opts.context] = {};
-  rows.forEach(t => { txnAmountState[opts.context][String(t.id)] = t.amount; });
+  rows.concat(pending).forEach(t => { txnAmountState[opts.context][String(t.id)] = t.amount; });
+  const pendingHtml = pending.length === 0 ? '' : `
+    <div class="date-group-heading pending-heading">⏳ Wacht op de bank (${pending.length}) · ${formatEuro(pending.reduce((s, t) => s + t.amount, 0))}</div>
+    ${pending.map(t => renderOneTxnRow(t, opts, bulkOn)).join('')}`;
   const groups = [];
   let lastDate = null;
   rows.forEach(t => {
     if (t.date !== lastDate) { groups.push({ date: t.date, items: [] }); lastDate = t.date; }
     groups[groups.length - 1].items.push(t);
   });
-  return groups.map(g => `
+  return pendingHtml + groups.map(g => `
     <div class="date-group-heading">${formatDateNL(g.date)}</div>
     ${g.items.map(t => renderOneTxnRow(t, opts, bulkOn)).join('')}
   `).join('');
@@ -3470,10 +3475,16 @@ async function loadTransactions() {
   const runningByAccount = {};
   const balanceAfter = {};
   let unclearedCount = 0;
+  // v3.65: het lopende saldo telt alleen bevestigde transacties (= wat de bank toont). Een onbevestigde
+  // transactie heeft nog niet plaatsgevonden bij de bank en toont daarom zelf geen saldo.
   (allTxnsWithAmount || []).forEach(t => {
-    const running = (runningByAccount[t.account_id] !== undefined ? runningByAccount[t.account_id] : (startingByAccount[t.account_id] || 0)) + Number(t.amount);
-    runningByAccount[t.account_id] = running;
-    balanceAfter[t.id] = running;
+    const prev = runningByAccount[t.account_id] !== undefined ? runningByAccount[t.account_id] : (startingByAccount[t.account_id] || 0);
+    if (t.cleared) {
+      runningByAccount[t.account_id] = prev + Number(t.amount);
+      balanceAfter[t.id] = runningByAccount[t.account_id];
+    } else {
+      runningByAccount[t.account_id] = prev;
+    }
     if (priveAccountIds.includes(t.account_id) && !t.cleared) unclearedCount++;
   });
 
@@ -3513,6 +3524,23 @@ async function loadTransactions() {
   }
   let { data, error: dErr } = await query;
   if (dErr) { console.error(dErr); return; }
+  data = data || [];
+
+  // v3.65: onbevestigde transacties van vandaag of eerder wachten nog op de bank. Die kregen onderaan de
+  // lijst (buiten beeld) hun plek; nu staan ze in een eigen blok bovenaan, ongeacht de getoonde maand.
+  // Alleen in de gewone weergave — bij zoeken, een categoriefilter of "Onbevestigd" is de lijst zelf al
+  // een selectie. Geplande transacties in de toekomst blijven onderaan / in "Toekomstige transacties".
+  let pendingData = [];
+  if (!searchTerm && !mainUnclearedOnly && txnCategoryFilter === null) {
+    const { data: pend, error: pErr } = await sb.from('transactions')
+      .select('id, date, payee, notitie, amount, cleared, account_id, link_type, category_id, categories(name)')
+      .eq('cleared', false).lte('date', toLocalISODate(new Date())).in('account_id', scopedFilterIds)
+      .order('date', { ascending: false }).order('id', { ascending: false }).limit(200);
+    if (pErr) console.error(pErr);
+    pendingData = pend || [];
+    const pendingIds = new Set(pendingData.map(t => String(t.id)));
+    data = data.filter(t => !pendingIds.has(String(t.id)));
+  }
 
   // v3.29: categorie-filter (vanuit een doorklik op een Budget-rij). Een gesplitste transactie heeft
   // op de hoofdrij category_id = null — de categorie zit dan op de split-rijen, dus die tellen we er
@@ -3533,22 +3561,23 @@ async function loadTransactions() {
     badgeEl.style.display = 'none';
   }
 
-  if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Geen transacties gevonden.</div>'; return; }
+  if (data.length === 0 && pendingData.length === 0) { el.innerHTML = '<div class="empty">Geen transacties gevonden.</div>'; return; }
 
-  const { data: splitCountRows } = await sb.from('transaction_splits').select('transaction_id').in('transaction_id', data.map(t => t.id));
+  const { data: splitCountRows } = await sb.from('transaction_splits').select('transaction_id').in('transaction_id', data.concat(pendingData).map(t => t.id));
   const splitCounts = {};
   (splitCountRows || []).forEach(r => { splitCounts[r.transaction_id] = (splitCounts[r.transaction_id] || 0) + 1; });
 
   let chronological = [...data].reverse(); // register-stijl: oud boven, nieuw onder
   if (mainSortDesc) chronological = chronological.reverse();
-  const rowsChrono = chronological.map(t => ({
+  const toRow = t => ({
     id: t.id, date: t.date, payee: t.payee, amount: Number(t.amount), cleared: t.cleared,
     categoryName: t.categories?.name, link_type: t.link_type,
     accountName: accountMeta[t.account_id]?.name, bank: accountMeta[t.account_id]?.bank,
     balanceAfter: balanceAfter[t.id], splitCount: splitCounts[t.id] || 0
-  }));
+  });
+  const rowsChrono = chronological.map(toRow);
   const rows = sortUnclearedToBottom(rowsChrono);
-  el.innerHTML = renderTransactionRows(rows, { showAccount: true, context: 'main' });
+  el.innerHTML = renderTransactionRows(rows, { showAccount: true, context: 'main', pendingRows: pendingData.map(toRow) });
   wireTransactionRowEvents(el, 'main');
 }
 
@@ -4290,7 +4319,7 @@ async function loadAccounts() {
     const balance = Number(a.starting_balance) + (txnSumByAccount[a.id] || 0);
     const unclearedCount = unclearedCountByAccount[a.id] || 0;
     const confirmedLine = unclearedCount > 0
-      ? `<div class="acc-confirmed" title="Saldo zonder de ${unclearedCount} onbevestigde transactie(s) tot en met vandaag" style="font-size:11px; font-weight:normal; color:#888;">bevestigd: ${formatEuro(balance - (unclearedSumByAccount[a.id] || 0))}</div>`
+      ? `<div class="acc-confirmed" title="Saldo zonder de ${unclearedCount} onbevestigde transactie(s) tot en met vandaag" style="font-size:10px; font-weight:normal; color:#aaa;">bevestigd: ${formatEuro(balance - (unclearedSumByAccount[a.id] || 0))}</div>`
       : '';
     return `
     <div class="acc-row" data-account="${a.id}" style="cursor:pointer;">
@@ -4353,8 +4382,8 @@ async function loadAccountDetailTransactions(accountId, startingBalance) {
   const monthEndStr = toLocalISODate(monthEnd);
 
   // Saldo aan het BEGIN van de getoonde maand: startsaldo + alles ervoor
-  const { data: priorTxns } = await fetchAllRows(() => sb.from('transactions').select('id, amount').eq('account_id', accountId).lt('date', monthStartStr));
-  let running = startingBalance + (priorTxns || []).reduce((s, t) => s + Number(t.amount), 0);
+  const { data: priorTxns } = await fetchAllRows(() => sb.from('transactions').select('id, amount, cleared').eq('account_id', accountId).lt('date', monthStartStr));
+  let running = startingBalance + (priorTxns || []).filter(t => t.cleared).reduce((s, t) => s + Number(t.amount), 0); // alleen bevestigd, zoals de bank
 
   const { data } = await sb.from('transactions')
     .select('id, date, payee, amount, cleared, category_id, link_type, categories(name)')
@@ -4370,8 +4399,8 @@ async function loadAccountDetailTransactions(accountId, startingBalance) {
   if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Geen transacties deze maand.</div>'; return; }
 
   const rowsChrono = data.map(t => {
-    running += Number(t.amount);
-    return { id: t.id, date: t.date, payee: t.payee, amount: Number(t.amount), cleared: t.cleared, categoryName: t.categories?.name, link_type: t.link_type, balanceAfter: running };
+    if (t.cleared) running += Number(t.amount); // onbevestigd: nog niet bij de bank, dus geen saldo
+    return { id: t.id, date: t.date, payee: t.payee, amount: Number(t.amount), cleared: t.cleared, categoryName: t.categories?.name, link_type: t.link_type, balanceAfter: t.cleared ? running : undefined };
   });
   const rows = sortUnclearedToBottom(rowsChrono);
   el.innerHTML = renderTransactionRows(rows, { showAccount: false, context: 'acct' });
@@ -4905,13 +4934,18 @@ async function loadZakelijk() {
   const zakAccountIds = (zakAccounts || []).map(a => a.id);
   const balanceAfter = {};
   if (zakAccountIds.length > 0) {
-    const { data: allZakTxnsWithAmount } = await fetchAllRows(() => sb.from('transactions').select('id, account_id, amount, date')
+    const { data: allZakTxnsWithAmount } = await fetchAllRows(() => sb.from('transactions').select('id, account_id, amount, date, cleared')
       .in('account_id', zakAccountIds).order('date', { ascending: true }));
     const runningByAccount = {};
     (allZakTxnsWithAmount || []).forEach(t => {
-      const running = (runningByAccount[t.account_id] !== undefined ? runningByAccount[t.account_id] : (startingByAccount[t.account_id] || 0)) + Number(t.amount);
-      runningByAccount[t.account_id] = running;
-      balanceAfter[t.id] = running;
+      // v3.65: alleen bevestigde transacties tellen mee in het lopende saldo (zoals de bank)
+      const prev = runningByAccount[t.account_id] !== undefined ? runningByAccount[t.account_id] : (startingByAccount[t.account_id] || 0);
+      if (t.cleared) {
+        runningByAccount[t.account_id] = prev + Number(t.amount);
+        balanceAfter[t.id] = runningByAccount[t.account_id];
+      } else {
+        runningByAccount[t.account_id] = prev;
+      }
     });
   }
 
