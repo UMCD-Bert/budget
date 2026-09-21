@@ -913,7 +913,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.63';
+const APP_VERSION = 'v3.64';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1761,6 +1761,22 @@ function formatDateNL(dateStr) {
   return `${d}-${m}-${y}`;
 }
 
+// ---- Alle rijen ophalen (v3.64) ----
+// Supabase geeft per verzoek maximaal 1000 rijen terug en laat de rest zonder foutmelding weg. Voor
+// sommen en lopende saldi over de héle historie (saldi, Ready to Assign, Geldleeftijd, dashboard)
+// zou dat vanaf de 1001e rij stilletjes verkeerde bedragen geven. makeQuery moet bij elke aanroep een
+// NIEUWE query teruggeven; de volgorde wordt met id vastgelegd zodat pagina's niet overlappen.
+async function fetchAllRows(makeQuery, pageSize = 1000) {
+  const all = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await makeQuery().order('id', { ascending: true }).range(from, from + pageSize - 1);
+    if (error) return { data: null, error };
+    if (data && data.length) all.push(...data);
+    if (!data || data.length < pageSize) break;
+  }
+  return { data: all, error: null };
+}
+
 // ---- ✕ in tekstvelden (v3.62) ----
 // Wikkelt het veld in een .clear-wrap en voegt een ✕ toe. Tik: veld leeg, 'input'-event (zodat bv. het
 // zoekveld meteen terugfiltert) en de cursor blijft in het veld. fireChange voor velden die pas op
@@ -2087,15 +2103,18 @@ function getDescendantCategoryIds(catId) {
 async function loadDashSubcatTransactions(catId, cacheKey) {
   dashSubcatTxnCache[cacheKey] = 'loading';
   const ids = getDescendantCategoryIds(catId);
-  let directQuery = sb.from('transactions').select('id, date, payee, amount').in('category_id', ids);
-  if (dashCatMode === 'month') {
-    const monthStart = dashCatViewMonth + '-01';
-    const endD = new Date(dashCatViewMonth + '-01T00:00:00');
-    endD.setMonth(endD.getMonth() + 1);
-    directQuery = directQuery.gte('date', monthStart).lt('date', toLocalISODate(endD));
-  }
-  const { data: direct } = await directQuery.order('date', { ascending: false });
-  const { data: splitRows } = await sb.from('transaction_splits').select('transaction_id, amount, transactions(id, date, payee)').in('category_id', ids);
+  const makeDirectQuery = () => {
+    let q = sb.from('transactions').select('id, date, payee, amount').in('category_id', ids);
+    if (dashCatMode === 'month') {
+      const monthStart = dashCatViewMonth + '-01';
+      const endD = new Date(dashCatViewMonth + '-01T00:00:00');
+      endD.setMonth(endD.getMonth() + 1);
+      q = q.gte('date', monthStart).lt('date', toLocalISODate(endD));
+    }
+    return q.order('date', { ascending: false });
+  };
+  const { data: direct } = await fetchAllRows(makeDirectQuery);
+  const { data: splitRows } = await fetchAllRows(() => sb.from('transaction_splits').select('id, transaction_id, amount, transactions(id, date, payee)').in('category_id', ids));
   let combined = (direct || []).map(t => ({ id: t.id, date: t.date, payee: t.payee, amount: Number(t.amount) }));
   (splitRows || []).forEach(r => {
     const t = r.transactions;
@@ -2171,11 +2190,10 @@ async function loadDashboard() {
   const { data: accounts } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
   const totalStart = (accounts || []).reduce((s, a) => s + Number(a.starting_balance), 0);
 
-  const { data: txns } = await sb.from('transactions')
+  const { data: txns } = await fetchAllRows(() => sb.from('transactions')
     .select('id, date, amount, category_id, link_type, accounts!inner(scope)')
     .eq('accounts.scope', 'prive')
-    .order('date', { ascending: true })
-    .order('id', { ascending: true });
+    .order('date', { ascending: true }));
 
   const rows = txns || [];
   const ageEl = document.getElementById('dash-money-age-list');
@@ -2204,7 +2222,7 @@ async function loadDashboard() {
   // gesplitste transacties zowel via de hoofdrij als via hun split-rijen meetelden — nu gefixt.)
   const txnById = {};
   rows.forEach(t => { txnById[t.id] = t; });
-  const { data: dashSplitRows } = await sb.from('transaction_splits').select('transaction_id, category_id, amount');
+  const { data: dashSplitRows } = await fetchAllRows(() => sb.from('transaction_splits').select('id, transaction_id, category_id, amount'));
   const splitParentIds = new Set((dashSplitRows || []).map(r => r.transaction_id));
 
   // v3.44: overschrijvingen tussen eigen rekeningen zijn geen echte inkomsten/uitgaven en
@@ -2765,12 +2783,11 @@ async function updateMoneyAge() {
   // Geldleeftijd (YNAB-stijl): mediane FIFO-leeftijd van de laatste 10 privé-uitgaven
   const { data: priveAccountsForAge } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
   const todayStr = toLocalISODate(new Date());
-  const { data: priveTxnsForAgeRaw } = await sb.from('transactions')
-    .select('date, amount, link_type, accounts!inner(scope)')
+  const { data: priveTxnsForAgeRaw } = await fetchAllRows(() => sb.from('transactions')
+    .select('id, date, amount, link_type, accounts!inner(scope)')
     .eq('accounts.scope', 'prive')
     .lte('date', todayStr)
-    .order('date', { ascending: true })
-    .order('id', { ascending: true });
+    .order('date', { ascending: true }));
   // v3.51: overschrijvingen tussen eigen rekeningen zijn geen echte in-/uitstroom van geld — ze
   // stonden hier nog als beide kanten (nep-uitgave én nep-inkomst) in de FIFO-wachtrij, wat de
   // leeftijd flink kon vertekenen. Dezelfde uitsluiting die het Dashboard al kreeg (v3.44).
@@ -2891,23 +2908,23 @@ async function loadBudget() {
   (splitSpentRows || []).forEach(r => { if (r.category_id) spentMap[r.category_id] = (spentMap[r.category_id] || 0) + Number(r.amount); });
 
   // Cumulatief t/m de bekeken maand (voor Resterend — bouwt op over maanden heen, voor alle drie de typen)
-  const { data: cumBudgetRows } = await sb
+  const { data: cumBudgetRows } = await fetchAllRows(() => sb
     .from('budget_months')
-    .select('category_id, assigned')
-    .lte('month', monthStr);
+    .select('id, category_id, assigned')
+    .lte('month', monthStr));
   const cumAssignedMap = {};
   (cumBudgetRows || []).forEach(r => cumAssignedMap[r.category_id] = (cumAssignedMap[r.category_id] || 0) + Number(r.assigned));
 
-  const { data: cumSpentRows } = await sb
+  const { data: cumSpentRows } = await fetchAllRows(() => sb
     .from('transactions')
-    .select('category_id, amount')
-    .lt('date', endStr);
+    .select('id, category_id, amount')
+    .lt('date', endStr));
   const cumSpentMap = {};
   (cumSpentRows || []).forEach(r => { if (r.category_id) cumSpentMap[r.category_id] = (cumSpentMap[r.category_id] || 0) + Number(r.amount); });
-  const { data: cumSplitSpentRows } = await sb
+  const { data: cumSplitSpentRows } = await fetchAllRows(() => sb
     .from('transaction_splits')
-    .select('category_id, amount, transactions!inner(date)')
-    .lt('transactions.date', endStr);
+    .select('id, category_id, amount, transactions!inner(date)')
+    .lt('transactions.date', endStr));
   (cumSplitSpentRows || []).forEach(r => { if (r.category_id) cumSpentMap[r.category_id] = (cumSpentMap[r.category_id] || 0) + Number(r.amount); });
 
   const { data: recurringRows } = await sb
@@ -2930,14 +2947,17 @@ async function loadBudget() {
   // Gesplitste transacties hebben ook category_id = null, maar zijn NIET "unassigned" — hun bedrag is al
   // volledig verdeeld over de split-categorieën hierboven. Zonder deze uitsluiting zou hun volle bedrag
   // dubbel meetellen: één keer als "unassigned" hier, en nogmaals via de split-categorieën in spentMap.
-  const { data: splitTxnIdRows } = await sb.from('transaction_splits').select('transaction_id');
+  const { data: splitTxnIdRows } = await fetchAllRows(() => sb.from('transaction_splits').select('id, transaction_id'));
   const splitTxnIds = [...new Set((splitTxnIdRows || []).map(r => r.transaction_id))];
-  let rtaTxnsQuery = sb.from('transactions').select('amount, category_id, accounts!inner(scope)').eq('accounts.scope', 'prive').lte('date', toLocalISODate(new Date()));
-  if (splitTxnIds.length > 0) rtaTxnsQuery = rtaTxnsQuery.not('id', 'in', `(${splitTxnIds.join(',')})`);
-  const { data: rtaTxns } = await rtaTxnsQuery;
+  const makeRtaTxnsQuery = () => {
+    let q = sb.from('transactions').select('id, amount, category_id, accounts!inner(scope)').eq('accounts.scope', 'prive').lte('date', toLocalISODate(new Date()));
+    if (splitTxnIds.length > 0) q = q.not('id', 'in', `(${splitTxnIds.join(',')})`);
+    return q;
+  };
+  const { data: rtaTxns } = await fetchAllRows(makeRtaTxnsQuery);
   const totalUnassigned = (rtaTxns || []).filter(r => r.category_id === null).reduce((s, r) => s + Number(r.amount), 0);
   const totalReceivedIncome = (rtaTxns || []).filter(r => r.category_id !== null && rootTypeOf(r.category_id) === 'income').reduce((s, r) => s + Number(r.amount), 0);
-  const { data: allBudgetRows } = await sb.from('budget_months').select('category_id, assigned');
+  const { data: allBudgetRows } = await fetchAllRows(() => sb.from('budget_months').select('id, category_id, assigned'));
   const totalAssignedEver = (allBudgetRows || [])
     .filter(r => rootTypeOf(r.category_id) !== 'income')
     .reduce((s, r) => s + Number(r.assigned), 0);
@@ -2947,7 +2967,7 @@ async function loadBudget() {
   rtaEl.className = 'amount ' + (rta >= 0 ? 'positive' : 'negative');
 
   const { data: allAccountsForTotal } = await sb.from('accounts').select('id, starting_balance');
-  const { data: allTxnsForTotal } = await sb.from('transactions').select('amount').lte('date', toLocalISODate(new Date()));
+  const { data: allTxnsForTotal } = await fetchAllRows(() => sb.from('transactions').select('id, amount').lte('date', toLocalISODate(new Date())));
   let combinedTotal = (allAccountsForTotal || []).reduce((s, a) => s + Number(a.starting_balance), 0);
   combinedTotal += (allTxnsForTotal || []).reduce((s, t) => s + Number(t.amount), 0);
   document.getElementById('combined-total').textContent = formatEuroWhole(combinedTotal);
@@ -3157,7 +3177,7 @@ async function loadBudget() {
 let txnCatLabelToId = {};
 
 async function loadPayeeSuggestions() {
-  const { data } = await sb.from('transactions').select('payee').not('payee', 'is', null);
+  const { data } = await fetchAllRows(() => sb.from('transactions').select('id, payee').not('payee', 'is', null));
   const uniquePayees = [...new Set((data || []).map(r => r.payee).filter(p => p && p.trim()))].sort();
   document.getElementById('payee-datalist').innerHTML = uniquePayees.map(p => `<option value="${p}">`).join('');
 }
@@ -3445,7 +3465,7 @@ async function loadTransactions() {
   // Deze tab toont alleen privé — zakelijke transacties horen in de Zakelijk-tab, niet hier tussendoor.
   const priveAccountIds = (accounts || []).filter(a => a.scope !== 'zakelijk').map(a => a.id);
 
-  const { data: allTxnsWithAmount, error } = await sb.from('transactions').select('id, account_id, amount, date, cleared').order('date', { ascending: true }).order('id', { ascending: true });
+  const { data: allTxnsWithAmount, error } = await fetchAllRows(() => sb.from('transactions').select('id, account_id, amount, date, cleared').order('date', { ascending: true }));
   if (error) { console.error(error); return; }
   const runningByAccount = {};
   const balanceAfter = {};
@@ -4255,7 +4275,7 @@ async function loadAccounts() {
   // niet tegen de bank bevestigde transactie heeft al wél plaatsgevonden en hoort mee te tellen.
   // v3.63: per rekening ook het saldo zónder de onbevestigde transacties ("bevestigd"), want dat is
   // wat de bank zelf toont. Zo is een verschil met het banksaldo direct te verklaren.
-  const { data: allTxns } = await sb.from('transactions').select('account_id, amount, cleared').lte('date', toLocalISODate(new Date()));
+  const { data: allTxns } = await fetchAllRows(() => sb.from('transactions').select('id, account_id, amount, cleared').lte('date', toLocalISODate(new Date())));
   const txnSumByAccount = {}, unclearedSumByAccount = {}, unclearedCountByAccount = {};
   (allTxns || []).forEach(t => {
     const amt = Number(t.amount);
@@ -4333,7 +4353,7 @@ async function loadAccountDetailTransactions(accountId, startingBalance) {
   const monthEndStr = toLocalISODate(monthEnd);
 
   // Saldo aan het BEGIN van de getoonde maand: startsaldo + alles ervoor
-  const { data: priorTxns } = await sb.from('transactions').select('amount').eq('account_id', accountId).lt('date', monthStartStr);
+  const { data: priorTxns } = await fetchAllRows(() => sb.from('transactions').select('id, amount').eq('account_id', accountId).lt('date', monthStartStr));
   let running = startingBalance + (priorTxns || []).reduce((s, t) => s + Number(t.amount), 0);
 
   const { data } = await sb.from('transactions')
@@ -4885,8 +4905,8 @@ async function loadZakelijk() {
   const zakAccountIds = (zakAccounts || []).map(a => a.id);
   const balanceAfter = {};
   if (zakAccountIds.length > 0) {
-    const { data: allZakTxnsWithAmount } = await sb.from('transactions').select('id, account_id, amount, date')
-      .in('account_id', zakAccountIds).order('date', { ascending: true }).order('id', { ascending: true });
+    const { data: allZakTxnsWithAmount } = await fetchAllRows(() => sb.from('transactions').select('id, account_id, amount, date')
+      .in('account_id', zakAccountIds).order('date', { ascending: true }));
     const runningByAccount = {};
     (allZakTxnsWithAmount || []).forEach(t => {
       const running = (runningByAccount[t.account_id] !== undefined ? runningByAccount[t.account_id] : (startingByAccount[t.account_id] || 0)) + Number(t.amount);
