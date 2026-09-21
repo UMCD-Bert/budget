@@ -913,7 +913,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.62';
+const APP_VERSION = 'v3.63';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -4253,16 +4253,29 @@ async function loadAccounts() {
   // aangemaakte herhalende transacties (tot 7 dagen vooruit, als onbevestigd) telden al mee in
   // het getoonde saldo van vandaag. Bewust GEEN cleared-filter: een zelf ingevoerde maar nog
   // niet tegen de bank bevestigde transactie heeft al wél plaatsgevonden en hoort mee te tellen.
-  const { data: allTxns } = await sb.from('transactions').select('account_id, amount').lte('date', toLocalISODate(new Date()));
-  const txnSumByAccount = {};
-  (allTxns || []).forEach(t => { txnSumByAccount[t.account_id] = (txnSumByAccount[t.account_id] || 0) + Number(t.amount); });
+  // v3.63: per rekening ook het saldo zónder de onbevestigde transacties ("bevestigd"), want dat is
+  // wat de bank zelf toont. Zo is een verschil met het banksaldo direct te verklaren.
+  const { data: allTxns } = await sb.from('transactions').select('account_id, amount, cleared').lte('date', toLocalISODate(new Date()));
+  const txnSumByAccount = {}, unclearedSumByAccount = {}, unclearedCountByAccount = {};
+  (allTxns || []).forEach(t => {
+    const amt = Number(t.amount);
+    txnSumByAccount[t.account_id] = (txnSumByAccount[t.account_id] || 0) + amt;
+    if (!t.cleared) {
+      unclearedSumByAccount[t.account_id] = (unclearedSumByAccount[t.account_id] || 0) + amt;
+      unclearedCountByAccount[t.account_id] = (unclearedCountByAccount[t.account_id] || 0) + 1;
+    }
+  });
 
   function accountRow(a) {
     const balance = Number(a.starting_balance) + (txnSumByAccount[a.id] || 0);
+    const unclearedCount = unclearedCountByAccount[a.id] || 0;
+    const confirmedLine = unclearedCount > 0
+      ? `<div class="acc-confirmed" title="Saldo zonder de ${unclearedCount} onbevestigde transactie(s) tot en met vandaag" style="font-size:11px; font-weight:normal; color:#888;">bevestigd: ${formatEuro(balance - (unclearedSumByAccount[a.id] || 0))}</div>`
+      : '';
     return `
     <div class="acc-row" data-account="${a.id}" style="cursor:pointer;">
       <div>${accountIconHtml(a)}${a.name}</div>
-      <div>${formatEuro(balance)}</div>
+      <div style="text-align:right;">${formatEuro(balance)}${confirmedLine}</div>
     </div>`;
   }
   function subtotalRow(label, accs) {
