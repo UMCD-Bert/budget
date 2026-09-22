@@ -914,7 +914,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.65';
+const APP_VERSION = 'v3.66';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -3477,11 +3477,19 @@ async function loadTransactions() {
   let unclearedCount = 0;
   // v3.65: het lopende saldo telt alleen bevestigde transacties (= wat de bank toont). Een onbevestigde
   // transactie heeft nog niet plaatsgevonden bij de bank en toont daarom zelf geen saldo.
+  // v3.66: getoond wordt alleen het saldo aan het EINDE van een dag (per rekening) — het saldo
+  // tussen twee transacties van dezelfde dag is een schijn-saldo, want de app kent de volgorde
+  // waarin de bank ze die dag zelf boekt niet. allTxnsWithAmount staat op datum + id oplopend, dus
+  // de laatst verwerkte bevestigde transactie van een rekening+dag is ook de laatst getoonde.
+  const lastDayRowId = {};
   (allTxnsWithAmount || []).forEach(t => {
     const prev = runningByAccount[t.account_id] !== undefined ? runningByAccount[t.account_id] : (startingByAccount[t.account_id] || 0);
     if (t.cleared) {
       runningByAccount[t.account_id] = prev + Number(t.amount);
+      const dayKey = t.account_id + '|' + t.date;
+      if (lastDayRowId[dayKey] !== undefined) delete balanceAfter[lastDayRowId[dayKey]];
       balanceAfter[t.id] = runningByAccount[t.account_id];
+      lastDayRowId[dayKey] = t.id;
     } else {
       runningByAccount[t.account_id] = prev;
     }
@@ -4398,9 +4406,17 @@ async function loadAccountDetailTransactions(accountId, startingBalance) {
   const el = document.getElementById('acc-detail-transactions');
   if (!data || data.length === 0) { el.innerHTML = '<div class="empty">Geen transacties deze maand.</div>'; return; }
 
-  const rowsChrono = data.map(t => {
+  // v3.66: alleen de laatst bevestigde transactie van een dag toont het saldo (zie loadTransactions).
+  const lastDateIdx = {};
+  const rowsChrono = [];
+  data.forEach(t => {
     if (t.cleared) running += Number(t.amount); // onbevestigd: nog niet bij de bank, dus geen saldo
-    return { id: t.id, date: t.date, payee: t.payee, amount: Number(t.amount), cleared: t.cleared, categoryName: t.categories?.name, link_type: t.link_type, balanceAfter: t.cleared ? running : undefined };
+    const row = { id: t.id, date: t.date, payee: t.payee, amount: Number(t.amount), cleared: t.cleared, categoryName: t.categories?.name, link_type: t.link_type, balanceAfter: t.cleared ? running : undefined };
+    if (t.cleared) {
+      if (lastDateIdx[t.date] !== undefined) rowsChrono[lastDateIdx[t.date]].balanceAfter = undefined;
+      lastDateIdx[t.date] = rowsChrono.length;
+    }
+    rowsChrono.push(row);
   });
   const rows = sortUnclearedToBottom(rowsChrono);
   el.innerHTML = renderTransactionRows(rows, { showAccount: false, context: 'acct' });
@@ -4937,12 +4953,17 @@ async function loadZakelijk() {
     const { data: allZakTxnsWithAmount } = await fetchAllRows(() => sb.from('transactions').select('id, account_id, amount, date, cleared')
       .in('account_id', zakAccountIds).order('date', { ascending: true }));
     const runningByAccount = {};
+    // v3.65: alleen bevestigde transacties tellen mee in het lopende saldo (zoals de bank)
+    // v3.66: alleen de laatst bevestigde transactie van een rekening+dag toont het saldo
+    const zakLastDayRowId = {};
     (allZakTxnsWithAmount || []).forEach(t => {
-      // v3.65: alleen bevestigde transacties tellen mee in het lopende saldo (zoals de bank)
       const prev = runningByAccount[t.account_id] !== undefined ? runningByAccount[t.account_id] : (startingByAccount[t.account_id] || 0);
       if (t.cleared) {
         runningByAccount[t.account_id] = prev + Number(t.amount);
+        const dayKey = t.account_id + '|' + t.date;
+        if (zakLastDayRowId[dayKey] !== undefined) delete balanceAfter[zakLastDayRowId[dayKey]];
         balanceAfter[t.id] = runningByAccount[t.account_id];
+        zakLastDayRowId[dayKey] = t.id;
       } else {
         runningByAccount[t.account_id] = prev;
       }
