@@ -914,7 +914,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.66';
+const APP_VERSION = 'v3.67';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -986,7 +986,7 @@ async function refreshBankReconciliation(scope) {
     // zakelijk), ongeacht welke knop je indrukte. Zonder filtering telde/toonde de melding op
     // bijv. de Zakelijk-knop dus ook privé-resultaten mee ("8 nieuwe" terwijl die allemaal
     // privé bleken) — nu beperkt tot rekeningen die echt bij deze scope horen.
-    const { data: scopedAccounts } = await sb.from('accounts').select('id').eq('scope', scope);
+    const { data: scopedAccounts } = await sb.from('accounts').select('id, name').eq('scope', scope);
     const scopedIds = new Set((scopedAccounts || []).map(a => a.id));
     const results = allResults.filter(r => scopedIds.has(r.account_id));
     const expired = results.filter(r => r.status === 'consent_expired').length;
@@ -996,7 +996,15 @@ async function refreshBankReconciliation(scope) {
     let msg = newCount + ' nieuwe transactie(s) opgehaald.';
     if (expired > 0) msg += ' ' + expired + ' rekening(en) hebben een verlopen koppeling — opnieuw koppelen via 🏦 hierboven.';
     if (rateLimited > 0) msg += ' ' + rateLimited + ' rekening(en) tijdelijk niet beschikbaar (PSD2-limiet van 4x/dag bereikt, probeer later opnieuw).';
-    if (errored > 0) msg += ' ' + errored + ' rekening(en) gaven een fout.';
+    if (errored > 0) {
+      // v3.67: toon per rekening de reden, anders is niet te zien wat er misging.
+      const nameById = new Map((scopedAccounts || []).map(a => [a.id, a.name]));
+      const reasons = results.filter(r => r.status === 'error').map(r => {
+        const d = String(r.detail || 'onbekende fout');
+        return (nameById.get(r.account_id) || 'Rekening') + ': ' + (d.length > 200 ? d.slice(0, 200) + '…' : d);
+      });
+      msg += ' ' + errored + ' rekening(en) gaven een fout — ' + reasons.join('; ');
+    }
     statusEl.textContent = msg;
   } catch (e) {
     statusEl.textContent = 'Onverwachte fout: ' + e.message;
