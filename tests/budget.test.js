@@ -30,6 +30,13 @@ window.runBudgetTests = async function (w) {
     return st('Vrije tijd') === '1' && st('Huishouden') === '0';
   })());
 
+  // --- Vaste tabbalk onderaan mag geen inhoud verbergen ---
+  w.scrollTo(0, 99999);
+  await wait(100);
+  const onderkant = [...w.document.querySelectorAll('#tab-budget *')].filter(e => e.offsetParent !== null).reduce((mx, e) => Math.max(mx, e.getBoundingClientRect().bottom), 0);
+  check('Onderkant van het Budget-scherm ligt boven de tabbalk', onderkant <= $('app-nav').getBoundingClientRect().top + 0.5, `inhoud ${Math.round(onderkant)} / tabbalk ${Math.round($('app-nav').getBoundingClientRect().top)}`);
+  w.scrollTo(0, 0);
+
   // --- Uitklappen en bedrag aanpassen halen niets opnieuw op ---
   let calls = w.__calls.length;
   click(w.document.querySelector('[data-budget-toggle="3"]'));
@@ -83,10 +90,25 @@ window.runBudgetTests = async function (w) {
   check('Zonder categorie toont alleen de uitgave zonder categorie', regels.length === 1 && regels[0].includes('Onbekend'), regels.length);
   click($('txn-category-filter-clear'));
 
+  // --- Gedeeld kasboek: één ophaalronde voor alle schermen ---
+  await wait(800); // laat eerdere, nog lopende laadacties (filter wissen) eerst afronden
+  w.eval('invalidateLedger()');
+  w.__calls.length = 0;
+  await Promise.all([w.loadBudget(), w.loadAccounts(), w.loadTransactions()]);
+  const nTxnCalls = w.__calls.filter(t => t === 'transactions').length;
+  check('Budget, Rekeningen en Transacties halen samen het kasboek één keer op (+ maandlijst en wachtlijst)', nTxnCalls <= 3, nTxnCalls);
+  check('Het kasboek staat daarna in de cache', g('ledgerCache') !== null);
+  await w.eval("sb.from('transactions').insert({ account_id: 1, category_id: 4, payee: 'cachetest', amount: -1, date: '" + raw.todayStr + "', cleared: true })");
+  check('Een schrijfactie op transacties maakt de cache ongeldig', g('ledgerCache') === null);
+  w.eval('invalidateLedger()');
+  const nieuw = await w.getLedger();
+  check('Daarna bevat het kasboek de nieuwe transactie', nieuw.data.some(t => t.payee === 'cachetest' || (t.amount === -1 && t.category_id === 4)));
+
   // --- Meer dan 1000 transacties (PostgREST-limiet) ---
   let id = 50000;
   for (let i = 0; i < 2200; i++) w.__db.transactions.push({ id: id++, account_id: 1, category_id: 4, payee: 'x', amount: -1, date: raw.monthStr.slice(0, 8) + '01', cleared: true, notitie: null, link_type: null, linked_transaction_id: null });
   w.document.querySelector('nav button[data-tab="budget"]').click();
+  w.eval('invalidateLedger()'); // de rijen hierboven zijn rechtstreeks in de nagebootste database gezet
   await w.loadBudget();
   check('Alle transacties worden opgehaald, ook boven de 1000', g('budgetRaw').txns.length >= 2200, g('budgetRaw').txns.length);
   return results;

@@ -41,9 +41,9 @@
   nav button .nav-label { font-size:11px; line-height:14px; white-space:nowrap; max-width:100%; letter-spacing:-.1px; }
   nav button.active { border-top-color:var(--green); font-weight:bold; color:var(--green); }
   #app-topbar { position:static; }
-  main { padding-bottom:calc(84px + env(safe-area-inset-bottom, 0px)); }
   .sticky-actions-bar { position:-webkit-sticky; position:sticky; top:var(--topbar-h, 0px); z-index:25; background:var(--bg); padding-top:12px; margin-top:-12px; padding-bottom:2px; }
-  main { padding:12px; max-width:700px; margin:0 auto; }
+  /* onderruimte voor de vaste tabbalk (v3.72; hier i.p.v. eerder in het bestand, want een latere main-regel overschreef dat) */
+  main { padding:12px; padding-bottom:calc(84px + env(safe-area-inset-bottom, 0px)); max-width:700px; margin:0 auto; }
   .rta { background:var(--card); border-radius:8px; padding:12px; margin-bottom:12px; text-align:center; }
   .rta .amount { font-size:24px; font-weight:bold; }
   .rta .amount.positive { color:var(--green); }
@@ -58,7 +58,7 @@
   .cat-row .avail { font-weight:bold; min-width:64px; text-align:right; margin-left:auto; }
   .cat-row .avail.positive { color:var(--green); }
   .cat-row .avail.negative { color:var(--red); }
-  .cat-row .expected { font-size:11px; color:#888; text-align:right; }
+  .cat-row .expected { font-size:11px; color:#6b6b6b; text-align:right; }
   .cat-row input.assign { width:64px; min-width:0; text-align:right; border:1px solid var(--border); border-radius:4px; padding:4px; }
   .fab { position:fixed; bottom:20px; right:20px; background:var(--green); color:#fff; border:none; border-radius:50%; width:52px; height:52px; font-size:26px; box-shadow:0 2px 6px rgba(0,0,0,.3); }
   .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); align-items:center; justify-content:center; z-index:40; }
@@ -80,19 +80,20 @@
   #txn-detail-split-remaining.nonzero { color:var(--red); }
   .btn-save { background:var(--green); color:#fff; }
   .btn-cancel { background:#eee; }
-  .empty { text-align:center; color:#999; padding:30px; font-size:13px; }
+  .btn-save, .btn-cancel { border:none; border-radius:8px; cursor:pointer; touch-action:manipulation; }
+  .empty { text-align:center; color:#6b6b6b; padding:30px; font-size:13px; }
   #version { font-size:11px; opacity:.7; }
   .poss-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(110px,1fr)); gap:8px; }
   .poss-card { background:var(--card); border-radius:8px; overflow:hidden; text-align:center; cursor:pointer; }
   .poss-card img { width:100%; height:90px; object-fit:cover; display:block; background:#eee; }
-  .poss-card .poss-name { font-size:12px; padding:6px 4px; }
+  .poss-card .poss-name { font-size:13px; padding:8px 4px; min-height:40px; }
   .photo-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
   .photo-row img { width:60px; height:60px; object-fit:cover; border-radius:6px; }
   .photo-thumb { position:relative; width:60px; height:60px; }
   .photo-thumb img { width:60px; height:60px; object-fit:cover; border-radius:6px; display:block; }
   .photo-thumb .photo-delete-btn { position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:50%; background:var(--red); color:#fff; border:none; font-size:12px; line-height:1; cursor:pointer; }
   .photo-thumb img, #poss-photos img { cursor:zoom-in; }
-  .photo-add-btn { width:60px; height:60px; border-radius:6px; border:1px dashed #aaa; background:none; font-size:22px; color:#888; }
+  .photo-add-btn { width:60px; height:60px; border-radius:6px; border:1px dashed #aaa; background:none; font-size:22px; color:#6b6b6b; }
   .lightbox-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:100; align-items:center; justify-content:center; }
   .lightbox-bg.open { display:flex; }
   .lightbox-bg img { max-width:92vw; max-height:92vh; object-fit:contain; border-radius:4px; }
@@ -136,7 +137,7 @@
   .bulk-toolbar { background:#fffde7; border:1px solid #ffe082; border-radius:8px; padding:8px; margin-bottom:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:12px; }
   .bulk-toolbar button { padding:6px 10px; border:none; border-radius:6px; background:var(--green); color:#fff; font-size:12px; cursor:pointer; }
   .bulk-toolbar button.danger { background:var(--red); }
-  .bulk-toolbar button.neutral { background:#888; }
+  .bulk-toolbar button.neutral { background:#666; }
   .bulk-sum { font-weight:bold; }
   .income-expense-columns { display:block; }
   .income-expense-columns .ie-column { display:none; }
@@ -150,9 +151,6 @@
   .ie-tab-btn.active { background:#1b5e20; color:#fff; border-color:#1b5e20; }
   .cat-tree-row.hoofdcat { border-left:4px solid #1b5e20; font-weight:bold; font-size:15px; margin-top:10px; }
   .cat-tree-row.subcat { font-weight:normal; font-size:13px; color:#444; background:transparent; box-shadow:none; }
-  .budget-col-headers { display:flex; gap:8px; padding:4px 4px 6px; margin-bottom:4px; border-bottom:0.5px solid var(--border); position:-webkit-sticky; position:sticky; top:var(--topbar-h,0px); z-index:24; background:var(--bg); }
-  .budget-col-headers .budget-col-header-name { flex:2; }
-  .budget-col-headers .budget-col-header-num { flex:1; text-align:right; font-size:10px; text-transform:uppercase; color:#999; letter-spacing:.3px; }
   .budget-group.hoofdcat-group { border-left:4px solid #1b5e20; padding-left:10px; background:var(--card); border-radius:6px; padding-top:8px; padding-bottom:2px; }
   .budget-group:not(.hoofdcat-group) { margin-left:16px; border-left:2px solid var(--border); padding-left:10px; }
   .budget-group > h3 { justify-content:flex-start; gap:8px; }
@@ -162,15 +160,15 @@
   .budget-group:not(.hoofdcat-group) > h3 .budget-num { font-size:12px; font-weight:400; }
   .budget-num.positive { color:#222; }
   .budget-num.negative { color:var(--red); }
-  .budget-num.neutral { color:#888; }
+  .budget-num.neutral { color:#6b6b6b; }
   .budget-group.hoofdcat-group > h3 { padding-left:0; font-size:14px; font-weight:500; }
   .cat-numbers { display:flex; gap:6px; align-items:center; margin-top:4px; }
   .cat-numbers .num-col { flex:1; min-width:0; text-align:center; }
-  .cat-numbers .num-label { font-size:10px; text-transform:uppercase; color:#6b6b6b; letter-spacing:.3px; }
+  .cat-numbers .num-label { font-size:11px; text-transform:uppercase; color:#6b6b6b; letter-spacing:.3px; }
   .cat-numbers .num-value { font-weight:bold; font-size:13px; }
   .cat-numbers .num-value.positive { color:#222; }
   .cat-numbers .num-value.negative { color:var(--red); }
-  .cat-numbers .num-value.neutral { color:#888; }
+  .cat-numbers .num-value.neutral { color:#6b6b6b; }
   .leaf-begroot-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 0; }
   .leaf-begroot-row .leaf-stat-label { font-size:13px; color:#666; min-width:70px; }
   .leaf-begroot-row input.assign { width:80px; flex:0 0 auto; text-align:right; border:1px solid var(--border); border-radius:4px; padding:5px 8px; font-size:14px; font-weight:400; box-sizing:border-box; }
@@ -180,14 +178,14 @@
   .leaf-stats-row .leaf-stat-value { font-size:13px; font-weight:400; color:#222; }
   .leaf-stats-row .leaf-stat-value.positive { color:#222; }
   .leaf-stats-row .leaf-stat-value.negative { color:var(--red); font-weight:600; }
-  .leaf-stats-row .leaf-stat-value.neutral { color:#888; font-weight:400; }
-  .cat-detail-link { background:none; border:none; padding:0; color:var(--green); font-size:13px; cursor:pointer; text-decoration:underline; touch-action:manipulation; }
+  .leaf-stats-row .leaf-stat-value.neutral { color:#6b6b6b; font-weight:400; }
+  .cat-detail-link { background:none; border:none; padding:12px 0; color:var(--green); font-size:13px; cursor:pointer; text-decoration:underline; touch-action:manipulation; }
   .cat-row-summary { display:block; cursor:pointer; padding:10px 2px 8px; min-height:44px; touch-action:manipulation; }
   .cat-row-summary .crs-top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
   .cat-row-summary .name { font-size:14px; font-weight:400; color:#222; flex:1 1 auto; min-width:0; overflow-wrap:break-word; }
   .cat-row-summary .cat-row-bar-track { width:100%; margin:6px 0 4px; flex:none; }
   .crs-sub { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:12px; color:#6b6b6b; min-height:18px; }
-  .chip-cover { border:1px solid var(--green); color:var(--green); background:#fff; border-radius:8px; padding:8px 14px; margin:-6px 0; font-size:12px; font-weight:bold; cursor:pointer; touch-action:manipulation; flex-shrink:0; }
+  .chip-cover { border:1px solid var(--green); color:var(--green); background:#fff; border-radius:8px; padding:12px 14px; margin:-12px 0; font-size:12px; font-weight:bold; cursor:pointer; touch-action:manipulation; flex-shrink:0; }
   .grp-head { cursor:pointer; padding:8px 0 8px; min-height:44px; touch-action:manipulation; }
   .grp-top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:14px; font-weight:500; }
   .hoofdcat-group > .grp-head .grp-top { font-size:15px; }
@@ -197,7 +195,7 @@
   .grp-num.neutral { color:#6b6b6b; }
   .grp-sub { font-size:12px; color:#6b6b6b; margin-top:2px; }
   .grp-edit { margin:0 0 4px; text-align:right; }
-  .grp-edit .cat-detail-link { padding:8px 0; }
+  .grp-edit .cat-detail-link { padding:12px 0; }
   .red-badge { display:inline-block; background:#fdecea; color:var(--red); border-radius:6px; padding:1px 6px; font-size:11px; font-weight:bold; margin-left:4px; vertical-align:1px; }
   .ie-tabs .ie-tab-btn { position:relative; }
   .tab-red { position:absolute; top:-7px; right:-3px; background:var(--red); color:#fff; border-radius:9px; min-width:18px; padding:0 5px; font-size:11px; line-height:18px; border:1.5px solid #fff; }
@@ -220,7 +218,7 @@
   .resterend-inline { font-size:14px; min-width:56px; text-align:right; flex-shrink:0; }
   .resterend-inline.positive { color:#222; font-weight:400; }
   .resterend-inline.negative { color:var(--red); font-weight:600; }
-  .resterend-inline.neutral { color:#888; }
+  .resterend-inline.neutral { color:#6b6b6b; }
   .cat-row-detail { margin:0 0 10px; padding:10px 12px; background:var(--card); border-radius:8px; max-width:280px; }
   .cat-numbers input.assign { width:100%; text-align:center; border:1px solid var(--border); border-radius:4px; padding:4px 2px; font-weight:bold; box-sizing:border-box; }
   .progress-bar-track { height:5px; border-radius:3px; background:#e0e0e0; margin-top:6px; overflow:hidden; }
@@ -236,10 +234,10 @@
   .dash-cat-nested { margin-left:14px; border-left:2px solid var(--border); padding-left:8px; margin-bottom:6px; }
   #tab-dashboard .group { background:var(--card); border-radius:8px; padding:12px 14px; margin-bottom:14px; }
   #tab-dashboard .group h3 { font-size:15px; font-weight:bold; color:#222; text-transform:none; letter-spacing:normal; }
-  .select-toggle-btn { font-size:12px; color:var(--green); background:none; border:1px solid var(--green); border-radius:6px; padding:4px 10px; cursor:pointer; }
+  .select-toggle-btn { font-size:12px; color:var(--green); background:none; border:1px solid var(--green); border-radius:6px; padding:4px 10px; min-height:40px; cursor:pointer; touch-action:manipulation; }
   .select-toggle-btn.active { background:var(--green); color:#fff; }
   .amount-type-toggle { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-top:2px; }
-  .amount-type-toggle button { flex:1; padding:8px; border:none; background:#fff; font-size:14px; cursor:pointer; }
+  .amount-type-toggle button { flex:1; min-height:40px; padding:8px; border:none; background:#fff; font-size:14px; cursor:pointer; }
   .amount-type-toggle button.active-expense { background:var(--red); color:#fff; }
   .amount-type-toggle button.active-income { background:var(--green); color:#fff; }
   .amount-with-steppers { display:flex; align-items:center; gap:6px; }
@@ -264,23 +262,25 @@
   .date-group-heading.pending-heading { color:#a86200; }
   .cat-popup-option { padding:10px 12px; cursor:pointer; border-bottom:1px solid #f0f0f0; touch-action:manipulation; }
   .cat-popup-option:last-child { border-bottom:none; }
-  .cat-popup-option.cat-popup-empty { color:#888; font-style:italic; }
-  .cat-popup-option.cat-popup-none { padding:12px; text-align:center; color:#888; font-style:italic; cursor:default; }
+  .cat-popup-option.cat-popup-empty { color:#6b6b6b; font-style:italic; }
+  .cat-popup-option.cat-popup-none { padding:12px; text-align:center; color:#6b6b6b; font-style:italic; cursor:default; }
   .dp-header { display:flex; justify-content:space-between; align-items:center; font-size:13px; margin-bottom:6px; }
   .dp-nav { border:none; background:none; font-size:16px; cursor:pointer; padding:2px 8px; }
   .dp-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center; }
-  .dp-weekdays { font-size:10px; color:#888; margin-bottom:2px; }
+  .dp-weekdays { font-size:11px; color:#6b6b6b; margin-bottom:2px; }
   .dp-day { border:none; background:none; padding:6px 0; border-radius:4px; cursor:pointer; font-size:12px; }
   .dp-day:hover { background:#f0f0f0; }
   .dp-day.dp-selected { background:var(--green); color:#fff; }
   .dp-today { font-size:11px; color:var(--green); background:none; border:1px solid var(--green); border-radius:6px; padding:3px 10px; cursor:pointer; }
-  .cat-tree-row { background:var(--card); border-radius:6px; padding:8px 10px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; cursor:grab; border:2px solid transparent; }
+  .cat-tree-row { background:var(--card); border-radius:6px; padding:2px 6px 2px 10px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; cursor:grab; border:2px solid transparent; }
   .cat-tree-row.drag-over-before { border-top:2px solid var(--green); }
   .cat-tree-row.drag-over-after { border-bottom:2px solid var(--green); }
   .cat-tree-row.drag-over-inside { background:#e8f5e9; border-color:var(--green); }
-  .cat-tree-row .cat-actions button { border:none; background:none; font-size:14px; padding:4px 6px; cursor:pointer; color:#666; }
+  .cat-tree-row .cat-actions { display:flex; }
+  .cat-tree-row .cat-actions button { border:none; background:none; font-size:15px; min-width:40px; min-height:40px; padding:0; cursor:pointer; color:#666; touch-action:manipulation; }
   .group h3 { display:flex; justify-content:space-between; align-items:center; }
-  .group h3 .add-sub-btn { font-size:13px; color:var(--green); background:none; border:none; cursor:pointer; text-transform:none; }
+  .add-sub-btn { min-height:40px; padding:10px 4px; }
+  .group h3 .add-sub-btn { font-size:13px; color:var(--green); background:none; border:none; cursor:pointer; text-transform:none; padding:10px 4px; min-height:40px; touch-action:manipulation; }
 </style>
 </head>
 <body>
@@ -413,7 +413,7 @@
       <div class="ie-column" data-ie-type="aliassen">
         <h3>Naam-aliassen <button class="add-sub-btn" id="payee-alias-add-toggle">+ toevoegen</button></h3>
         <div id="payee-alias-form" style="display:none; background:var(--card); border-radius:8px; padding:10px 14px; margin-bottom:10px;">
-          <p style="font-size:12px; color:#888; margin:0 0 8px;">Als de bankomschrijving (of naam) dit patroon als los woord of woordgroep bevat, wordt de naam-suggestie het alias in plaats van de standaard-afleiding. Voorkeurscategorie is optioneel (alleen privé-categorieën) en wordt dan ook meteen voorgesteld. Deze lijst vult zich ook vanzelf: bij het verwerken van een bankboeking onthoudt de app de naam en categorie die je kiest (uit te zetten met het vinkje "Onthoud voor volgende keer"). Ook overschrijving-regels (⇄ naam → rekening) komen hier vanzelf bij.</p>
+          <p style="font-size:12px; color:#6b6b6b; margin:0 0 8px;">Als de bankomschrijving (of naam) dit patroon als los woord of woordgroep bevat, wordt de naam-suggestie het alias in plaats van de standaard-afleiding. Voorkeurscategorie is optioneel (alleen privé-categorieën) en wordt dan ook meteen voorgesteld. Deze lijst vult zich ook vanzelf: bij het verwerken van een bankboeking onthoudt de app de naam en categorie die je kiest (uit te zetten met het vinkje "Onthoud voor volgende keer"). Ook overschrijving-regels (⇄ naam → rekening) komen hier vanzelf bij.</p>
           <div style="display:flex; gap:6px; margin-bottom:6px;">
             <input type="text" id="payee-alias-pattern" placeholder="Patroon (bv. BCK*PLUS)" style="flex:1; min-width:0;">
             <input type="text" id="payee-alias-value" placeholder="Alias (bv. Plus)" style="flex:1; min-width:0;">
@@ -495,7 +495,7 @@
     <div class="rta" id="zak-resultaat">
       <div style="font-size:12px; color:#666;">Resultaat</div>
       <div class="amount" id="zak-resultaat-amount">€ 0,00</div>
-      <div style="font-size:11px; color:#888; margin-top:4px;">
+      <div style="font-size:11px; color:#6b6b6b; margin-top:4px;">
         Inkomsten: <span id="zak-inkomsten">€ 0,00</span> · Uitgaven: <span id="zak-uitgaven">€ 0,00</span>
       </div>
     </div>
@@ -562,9 +562,9 @@
         <button class="select-toggle-btn" id="dash-cat-mode-toggle">Gemiddelde</button>
       </div>
       <div id="dash-cat-month-nav" style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:8px;">
-        <button class="select-toggle-btn" id="dash-cat-month-prev">‹</button>
+        <button class="select-toggle-btn nav-btn" id="dash-cat-month-prev" aria-label="Vorige maand">‹</button>
         <div id="dash-cat-month-label" style="font-weight:bold; min-width:70px; text-align:center;"></div>
-        <button class="select-toggle-btn" id="dash-cat-month-next">›</button>
+        <button class="select-toggle-btn nav-btn" id="dash-cat-month-next" aria-label="Volgende maand">›</button>
       </div>
       <div id="dash-cat-average-label" style="display:none; text-align:center; font-weight:bold; color:#1b5e20; margin-bottom:8px;">Gemiddelde per maand</div>
       <div id="dash-top-categories-list"><div class="empty">Nog geen gegevens.</div></div>
@@ -580,15 +580,6 @@
 <div class="modal-bg" id="zak-txn-modal-bg">
   <div class="modal">
     <h3 style="margin-top:0;">Nieuwe zakelijke transactie</h3>
-    <label>Rekening</label>
-    <select id="zak-txn-account"></select>
-    <label>Naam</label>
-    <input type="text" id="zak-txn-payee" list="payee-datalist" placeholder="Bijv. Klant X">
-    <label>Categorie</label>
-    <div class="cat-picker-wrap" style="position:relative;">
-      <input type="text" id="zak-txn-category-search" autocomplete="off" placeholder="Typ om te zoeken, of laat leeg voor Ongecategoriseerd">
-      <div class="cat-popup" id="zak-txn-category-popup" style="display:none;"></div>
-    </div>
     <label>Bedrag</label>
     <div class="amount-row">
       <div class="amount-type-toggle">
@@ -600,6 +591,15 @@
         <input type="number" step="0.01" id="zak-txn-amount" min="0">
       </div>
     </div>
+    <label>Naam</label>
+    <input type="text" id="zak-txn-payee" list="payee-datalist" placeholder="Bijv. Klant X">
+    <label>Categorie</label>
+    <div class="cat-picker-wrap" style="position:relative;">
+      <input type="text" id="zak-txn-category-search" autocomplete="off" placeholder="Zoek of kies een categorie">
+      <div class="cat-popup" id="zak-txn-category-popup" style="display:none;"></div>
+    </div>
+    <label>Rekening</label>
+    <select id="zak-txn-account"></select>
     <label>Datum</label>
     <div class="date-picker-wrap">
       <input type="text" id="zak-txn-date-display" readonly placeholder="dd-mm-jjjj" style="cursor:pointer;">
@@ -607,9 +607,11 @@
       <div class="dp-popup" id="zak-txn-date-popup" style="display:none;"></div>
     </div>
     <label style="margin-top:8px;"><input type="checkbox" id="zak-txn-cleared" style="width:auto;"> Bevestigd</label>
-    <div class="actions">
-      <button class="btn-cancel" id="zak-txn-cancel">Annuleren</button>
-      <button class="btn-save" id="zak-txn-save">Opslaan</button>
+    <div class="modal-footer">
+      <div class="actions">
+        <button class="btn-cancel" id="zak-txn-cancel">Annuleren</button>
+        <button class="btn-save" id="zak-txn-save">Opslaan</button>
+      </div>
     </div>
   </div>
 </div>
@@ -722,7 +724,7 @@
 <div class="modal-bg" id="recurring-overview-modal-bg">
   <div class="modal" style="max-height:80vh; overflow-y:auto;">
     <h3 style="margin-top:0;">Toekomstige transacties</h3>
-    <p style="font-size:12px; color:#888; margin-top:-8px;">Eerstvolgende occurrence van elke actieve herhalende transactie.</p>
+    <p style="font-size:12px; color:#6b6b6b; margin-top:-8px;">Eerstvolgende occurrence van elke actieve herhalende transactie.</p>
     <div id="recurring-overview-list"></div>
     <div class="actions">
       <button class="btn-cancel" id="recurring-overview-close">Sluiten</button>
@@ -761,7 +763,7 @@
 <div class="modal-bg" id="new-month-modal-bg">
   <div class="modal">
     <h3 style="margin-top:0;">Nieuwe maand: <span id="new-month-label"></span></h3>
-    <p style="font-size:13px; color:#888; margin-top:-8px;">Er is nog geen budget voor deze maand. Hoe wil je beginnen?</p>
+    <p style="font-size:13px; color:#6b6b6b; margin-top:-8px;">Er is nog geen budget voor deze maand. Hoe wil je beginnen?</p>
     <div style="display:flex; flex-direction:column; gap:8px;">
       <button class="btn-save" id="new-month-copy-budget" style="padding:10px;">Zelfde als budget vorige maand</button>
       <button class="btn-save" id="new-month-copy-actuals" style="padding:10px;">Zelfde als transacties vorige maand</button>
@@ -798,7 +800,7 @@
     <select id="transfer-from"></select>
     <label>Naar rekening</label>
     <select id="transfer-to"></select>
-    <div id="transfer-cross-scope-note" style="display:none; font-size:12px; color:#888; margin-top:8px; background:#f5f5f5; border-radius:6px; padding:8px;"></div>
+    <div id="transfer-cross-scope-note" style="display:none; font-size:12px; color:#6b6b6b; margin-top:8px; background:#f5f5f5; border-radius:6px; padding:8px;"></div>
     <label>Bedrag</label>
     <input type="number" step="0.01" id="transfer-amount" placeholder="50.00">
     <label>Datum</label>
@@ -845,7 +847,7 @@
         <span>Nog te verdelen</span>
         <span id="txn-detail-split-remaining" style="font-weight:bold;">€ 0,00</span>
       </div>
-      <button type="button" id="txn-detail-split-toggle-off" style="margin-top:4px; background:none; border:none; color:#888; font-size:12px; padding:0; cursor:pointer;">− Splitsing annuleren</button>
+      <button type="button" id="txn-detail-split-toggle-off" style="margin-top:4px; background:none; border:none; color:#6b6b6b; font-size:12px; padding:0; cursor:pointer;">− Splitsing annuleren</button>
     </div>
     <label>Rekening</label>
     <select id="txn-detail-account"></select>
@@ -860,7 +862,7 @@
     </label>
     <label style="display:none; align-items:flex-start; gap:6px; margin-top:10px;" id="txn-detail-learn-wrap">
       <input type="checkbox" id="txn-detail-learn" style="width:auto; margin-top:3px;" checked>
-      <span>Onthoud voor volgende keer <span id="txn-detail-learn-key" style="color:#999; font-size:12px; overflow-wrap:anywhere;"></span></span>
+      <span>Onthoud voor volgende keer <span id="txn-detail-learn-key" style="color:#6b6b6b; font-size:12px; overflow-wrap:anywhere;"></span></span>
     </label>
     <div id="txn-detail-recurring-match" style="display:none; font-size:13px; background:#f5f5f5; border-radius:6px; padding:8px 10px; margin-top:10px;">
       <span id="txn-detail-recurring-match-text"></span>
@@ -890,13 +892,13 @@
         <label>Bonnetje</label>
         <div class="photo-row" id="receipt-photos"></div>
         <input type="file" id="receipt-file-input" accept="image/*" style="display:none">
-        <button class="photo-add-btn" id="receipt-add-btn" style="width:auto; padding:6px 10px; margin-top:6px; font-size:12px;">+ Bonnetje</button>
+        <button class="photo-add-btn" id="receipt-add-btn" style="width:auto; height:40px; padding:6px 10px; margin-top:6px; font-size:13px;">+ Bonnetje</button>
       </div>
       <div style="flex:1; min-width:0;">
         <label>Aankoop</label>
         <div class="photo-row" id="aankoop-photos"></div>
         <input type="file" id="aankoop-file-input" accept="image/*" style="display:none">
-        <button class="photo-add-btn" id="aankoop-add-photo-btn" style="width:auto; padding:6px 10px; margin-top:6px; font-size:12px;">+ Aankoop</button>
+        <button class="photo-add-btn" id="aankoop-add-photo-btn" style="width:auto; height:40px; padding:6px 10px; margin-top:6px; font-size:13px;">+ Aankoop</button>
       </div>
     </div>
 
@@ -958,7 +960,7 @@
     </div>
     <div id="cat-spread-row" style="display:none;">
       <label><input type="checkbox" id="cat-spread" style="width:auto;"> Gespreid door de maand</label>
-      <p style="font-size:12px; color:#888; margin:2px 0 0;">Voor categorieën met meerdere, verspreide uitgaven/inkomsten (bv. boodschappen, kleding) i.p.v. één vast moment (bv. hypotheek, energie) — bepaalt hoe de lopende maand meetelt bij "Gemiddelde" op het Dashboard.</p>
+      <p style="font-size:12px; color:#6b6b6b; margin:2px 0 0;">Voor categorieën met meerdere, verspreide uitgaven/inkomsten (bv. boodschappen, kleding) i.p.v. één vast moment (bv. hypotheek, energie) — bepaalt hoe de lopende maand meetelt bij "Gemiddelde" op het Dashboard.</p>
     </div>
     <div class="actions">
       <button class="btn-cancel" id="cat-cancel">Annuleren</button>
@@ -1002,7 +1004,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.72';
+const APP_VERSION = 'v3.73';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1680,8 +1682,8 @@ async function loadPayeeAliasList() {
     const catLabel = a.category_id ? (aliasCatLeaves.find(l => l.id === a.category_id)?.label || '') : '';
     const target = a.transfer_account_id
       ? '⇄ ' + escapeHtml(accountList.find(x => x.id === a.transfer_account_id)?.name || 'onbekende rekening')
-        + (a.transfer_for_account_id ? ' <span style="color:#999;">(op ' + escapeHtml(accountList.find(x => x.id === a.transfer_for_account_id)?.name || '?') + ')</span>' : '')
-      : escapeHtml(a.alias) + (catLabel ? ' <span style="color:#999;">(' + escapeHtml(catLabel) + ')</span>' : '');
+        + (a.transfer_for_account_id ? ' <span style="color:#6b6b6b;">(op ' + escapeHtml(accountList.find(x => x.id === a.transfer_for_account_id)?.name || '?') + ')</span>' : '')
+      : escapeHtml(a.alias) + (catLabel ? ' <span style="color:#6b6b6b;">(' + escapeHtml(catLabel) + ')</span>' : '');
     return `
     <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-top:1px solid var(--border); font-size:13px;">
       <span style="min-width:0; overflow-wrap:anywhere;">${escapeHtml(a.pattern)} → ${target}</span>
@@ -1769,7 +1771,7 @@ async function reconToggleExistingList(row, containerDiv, scope) {
     .order('date', { ascending: false }).limit(50);
   if (error) { console.error(error); return; }
   if (!candidates || candidates.length === 0) {
-    listDiv.innerHTML = '<div style="color:#999; font-size:12px;">Geen nog niet-geclearde transacties op deze rekening.</div>';
+    listDiv.innerHTML = '<div style="color:#6b6b6b; font-size:12px;">Geen nog niet-geclearde transacties op deze rekening.</div>';
   } else {
     listDiv.innerHTML = '';
     candidates.forEach(c => {
@@ -1892,6 +1894,56 @@ async function fetchAllRows(makeQuery, pageSize = 1000) {
   }
   return { data: all, error: null };
 }
+
+// ---- Gedeeld kasboek (v3.73) ----
+// Budget, Rekeningen, Transacties, Zakelijk en Geldleeftijd hadden elk hun eigen volledige ophaalronde van alle
+// transacties; bij het openen van de app waren dat er vijf tegelijk. Nu halen ze dezelfde lijst op (één keer,
+// parallelle aanvragen wachten op elkaar) en filteren ze zelf. Bij een schrijfactie op transacties/rekeningen
+// vanuit deze app wordt de lijst direct ongeldig; wijzigingen vanaf een ander toestel zijn binnen 15 seconden zichtbaar.
+let ledgerCache = null, ledgerCacheTs = 0, ledgerInflight = null, ledgerVersion = 0;
+const LEDGER_TTL_MS = 15000;
+function invalidateLedger() { ledgerVersion++; ledgerCache = null; ledgerInflight = null; }
+async function getLedger() {
+  if (ledgerCache && Date.now() - ledgerCacheTs < LEDGER_TTL_MS) return { data: ledgerCache, error: null };
+  if (ledgerInflight) return ledgerInflight;
+  const version = ledgerVersion;
+  const p = (async () => {
+    const res = await fetchAllRows(() => sb.from('transactions').select('id, account_id, category_id, amount, date, cleared, link_type'));
+    if (res.error) return res;
+    res.data.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : Number(a.id) - Number(b.id)));
+    if (version === ledgerVersion) { ledgerCache = res.data; ledgerCacheTs = Date.now(); }
+    return res;
+  })();
+  ledgerInflight = p;
+  p.finally(() => { if (ledgerInflight === p) ledgerInflight = null; });
+  return p;
+}
+// Schrijfacties op transacties/rekeningen maken de lijst ongeldig: bij het starten én zodra de schrijfactie klaar is.
+(function trackLedgerWrites() {
+  let underlying = sb.from.bind(sb);
+  const WRITES = ['insert', 'update', 'upsert', 'delete'];
+  const tracked = function (table) {
+    const q = underlying(table);
+    if (table === 'transactions' || table === 'accounts') {
+      WRITES.forEach(m => {
+        const orig = q[m];
+        if (typeof orig !== 'function') return;
+        q[m] = function (...args) {
+          invalidateLedger();
+          const r = orig.apply(this, args);
+          if (r && typeof r.then === 'function') {
+            const t = r.then.bind(r);
+            r.then = (ok, bad) => t(x => { invalidateLedger(); return ok ? ok(x) : x; }, bad);
+          }
+          return r;
+        };
+      });
+    }
+    return q;
+  };
+  // Een latere toewijzing aan sb.from (bv. een testdouble) vervangt alleen de onderliggende functie.
+  Object.defineProperty(sb, 'from', { configurable: true, get() { return tracked; }, set(fn) { underlying = fn; } });
+})();
 
 // ---- ✕ in tekstvelden (v3.62) ----
 // Wikkelt het veld in een .clear-wrap en voegt een ✕ toe. Tik: veld leeg, 'input'-event (zodat bv. het
@@ -2050,8 +2102,10 @@ function formatMonthLabelNL(m) {
 // Welke indices een label moeten tonen: bij weinig kolommen gewoon allemaal, anders per
 // kwartaal (elke 3e) — geankerd op het EINDE van de reeks (de huidige/laatste maand), zodat
 // het altijd "nu, dan -3, dan -3, ..." is i.p.v. geteld vanaf het begin van de reeks.
-function monthLabelIndices(monthsArr) {
-  const step = monthsArr.length <= 6 ? 1 : 3;
+function monthLabelIndices(monthsArr, width) {
+  // v3.73: aantal labels hangt af van de breedte van de grafiek (± 64 px per label), anders overlappen ze op een telefoon.
+  const maxLabels = Math.max(2, Math.floor((width || 600) / 64));
+  const step = Math.max(1, Math.ceil(monthsArr.length / maxLabels));
   const indices = [];
   for (let i = monthsArr.length - 1; i >= 0; i -= step) indices.unshift(i);
   return new Set(indices);
@@ -2409,9 +2463,12 @@ async function loadDashboard() {
     return sorted.length % 2 === 0 ? Math.round((sorted[mid - 1] + sorted[mid]) / 2) : sorted[mid];
   }
 
+  // v3.73: grafiek in de echte breedte tekenen (i.p.v. 600 breed en daarna verkleind): op een telefoon waren
+  // de cijfers daardoor 6-8 px groot. Nu zijn ze zo groot als bedoeld.
+  const chartW = el => Math.min(700, Math.max(280, Math.round(el.clientWidth) || 340));
   function renderMoneyAgeChart(monthsArr, ages) {
     if (monthsArr.length === 0) return '<div class="empty">Nog geen gegevens.</div>';
-    const w = 600, h = 220, padLeft = 20, padRight = 44, padTop = 30, padBottom = 34;
+    const w = chartW(ageEl), h = 220, padLeft = 20, padRight = 44, padTop = 30, padBottom = 34;
     const plotW = w - padLeft - padRight, plotH = h - padTop - padBottom;
     const validAges = ages.filter(a => a !== null);
     const maxAge = Math.max(...(validAges.length ? validAges : [30]), 30);
@@ -2422,13 +2479,13 @@ async function loadDashboard() {
     const dots = ages.map((a, i) => a === null ? '' : `<circle cx="${xFor(i)}" cy="${yFor(a)}" r="7" fill="${a > 30 ? '#f9a825' : '#1b5e20'}" stroke="#fff" stroke-width="2" data-month="${monthsArr[i]}" data-age="${a}"></circle>`).join('');
     const valueLabels = ages.map((a, i) => a === null ? '' : `<text x="${xFor(i)}" y="${yFor(a) - 12}" font-size="14" font-weight="500" fill="#222" text-anchor="middle">${a}d</text>`).join('');
     const thresholdY = yFor(30);
-    const labelIdx = monthLabelIndices(monthsArr);
+    const labelIdx = monthLabelIndices(monthsArr, w);
     // Rand-labels (eerste/laatste maand) tegen de rand uitlijnen i.p.v. centreren, anders vallen
     // ze links/rechts van het canvas en worden ze afgekapt.
     const labels = monthsArr.map((m, i) => {
       if (!labelIdx.has(i)) return '';
       const anchor = i === 0 ? 'start' : (i === monthsArr.length - 1 ? 'end' : 'middle');
-      return `<text x="${xFor(i)}" y="${h - 10}" font-size="14" text-anchor="${anchor}" fill="#888">${formatMonthLabelNL(m)}</text>`;
+      return `<text x="${xFor(i)}" y="${h - 10}" font-size="14" text-anchor="${anchor}" fill="#6b6b6b">${formatMonthLabelNL(m)}</text>`;
     }).join('');
     return `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;">
       <line x1="${padLeft}" y1="${thresholdY}" x2="${w - padRight}" y2="${thresholdY}" stroke="#f9a825" stroke-dasharray="4,3" stroke-width="1"></line>
@@ -2443,7 +2500,7 @@ async function loadDashboard() {
 
   function renderMonthlySaldoChart(monthsArr, incomeArr, expenseArr) {
     if (monthsArr.length === 0) return '<div class="empty">Nog geen gegevens.</div>';
-    const w = 600, h = 240, padLeft = 10, padRight = 10, padTop = 40, padBottom = 34;
+    const w = chartW(saldoEl), h = 262, padLeft = 10, padRight = 10, padTop = 36, padBottom = 54;
     const plotW = w - padLeft - padRight, plotH = h - padTop - padBottom;
     const expenseAbsArr = expenseArr.map(v => Math.abs(v)); // uitgaven als positief bedrag, direct vergelijkbaar met inkomsten
     const maxAbs = Math.max(...incomeArr, ...expenseAbsArr, 1);
@@ -2451,7 +2508,7 @@ async function loadDashboard() {
     const slot = plotW / monthsArr.length;
     const barW = Math.max(4, slot * 0.32);
     const gap = Math.max(1, slot * 0.04);
-    const labelIdx = monthLabelIndices(monthsArr); // dezelfde ankerlogica ook voor de cijferlabels, anders wordt een lange reeks onleesbaar
+    const labelIdx = monthLabelIndices(monthsArr, w); // dezelfde ankerlogica ook voor de cijferlabels, anders wordt een lange reeks onleesbaar
     let bars = '', valueLabels = '';
     monthsArr.forEach((m, i) => {
       const income = incomeArr[i], expenseAbs = expenseAbsArr[i];
@@ -2466,9 +2523,8 @@ async function loadDashboard() {
         const saldoColor = saldo >= 0 ? '#1b5e20' : '#c62828';
         const saldoSign = saldo >= 0 ? '+' : '';
         const topH = Math.max(incH, expH);
-        valueLabels += `<text x="${slotCenter}" y="${padTop - 10}" font-size="13" font-weight="500" fill="${saldoColor}" text-anchor="middle">${saldoSign}${formatEuroWhole(saldo)}</text>`;
-        valueLabels += `<text x="${incX + barW / 2}" y="${baseline - incH - 6}" font-size="11" fill="#43a047" text-anchor="middle">${formatEuroWhole(income)}</text>`;
-        valueLabels += `<text x="${expX + barW / 2}" y="${baseline - expH - 6}" font-size="11" fill="#c62828" text-anchor="middle">${formatEuroWhole(expenseAbs)}</text>`;
+        // v3.73: saldo bovenaan; inkomsten/uitgaven onder de maandnaam (boven de staven overlapten ze elkaar).
+        valueLabels += `<text x="${slotCenter}" y="${padTop - 14}" font-size="13" font-weight="500" fill="${saldoColor}" text-anchor="middle">${saldoSign}${formatEuroWhole(saldo)}</text>`;
       }
     });
     // Rand-labels (eerste/laatste maand) tegen de rand uitlijnen i.p.v. centreren, anders vallen
@@ -2477,7 +2533,10 @@ async function loadDashboard() {
       if (!labelIdx.has(i)) return '';
       const slotCenter = padLeft + i * slot + slot / 2;
       const anchor = i === 0 ? 'start' : (i === monthsArr.length - 1 ? 'end' : 'middle');
-      return `<text x="${slotCenter}" y="${h - 10}" font-size="14" text-anchor="${anchor}" fill="#888">${formatMonthLabelNL(m)}</text>`;
+      const compact = v => (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + 'k' : String(Math.round(v)));
+      const ink = compact(incomeArr[i]), uit = compact(expenseAbsArr[i]);
+      return `<text x="${slotCenter}" y="${h - 30}" font-size="14" text-anchor="${anchor}" fill="#6b6b6b">${formatMonthLabelNL(m)}</text>`
+        + `<text x="${slotCenter}" y="${h - 10}" font-size="12" text-anchor="${anchor}"><tspan fill="#2e7d32">${ink}</tspan><tspan fill="#6b6b6b"> · </tspan><tspan fill="#c62828">${uit}</tspan></text>`;
     }).join('');
     return `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;">
       <line x1="${padLeft}" y1="${baseline}" x2="${w - padRight}" y2="${baseline}" stroke="#ccc" stroke-width="1"></line>
@@ -2932,13 +2991,11 @@ function monthBounds(refDate) {
 
 async function updateMoneyAge() {
   // Geldleeftijd (YNAB-stijl): mediane FIFO-leeftijd van de laatste 10 privé-uitgaven
-  const { data: priveAccountsForAge } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
+  const { data: priveAccountsForAge } = await sb.from('accounts').select('id, starting_balance').eq('scope', 'prive');
   const todayStr = toLocalISODate(new Date());
-  const { data: priveTxnsForAgeRaw } = await fetchAllRows(() => sb.from('transactions')
-    .select('id, date, amount, link_type, accounts!inner(scope)')
-    .eq('accounts.scope', 'prive')
-    .lte('date', todayStr)
-    .order('date', { ascending: true }));
+  const { data: ledgerForAge } = await getLedger();
+  const priveIdsForAge = new Set((priveAccountsForAge || []).map(a => String(a.id)));
+  const priveTxnsForAgeRaw = (ledgerForAge || []).filter(t => t.date <= todayStr && priveIdsForAge.has(String(t.account_id)));
   // v3.51: overschrijvingen tussen eigen rekeningen zijn geen echte in-/uitstroom van geld — ze
   // stonden hier nog als beide kanten (nep-uitgave én nep-inkomst) in de FIFO-wachtrij, wat de
   // leeftijd flink kon vertekenen. Dezelfde uitsluiting die het Dashboard al kreeg (v3.44).
@@ -3050,7 +3107,7 @@ async function loadBudget() {
 
   const [budgetRes, txnRes, splitRes, recurRes, accRes, stagingRes] = await Promise.all([
     fetchAllRows(() => sb.from('budget_months').select('id, category_id, month, assigned')),
-    fetchAllRows(() => sb.from('transactions').select('id, account_id, category_id, amount, date, cleared, link_type').lt('date', limitStr)),
+    getLedger(),
     fetchAllRows(() => sb.from('transaction_splits').select('id, transaction_id, category_id, amount, transactions!inner(date)').lt('transactions.date', limitStr)),
     sb.from('recurring_transactions').select('category_id, amount, next_date').eq('active', true).gte('next_date', startStr).lt('next_date', endStr),
     sb.from('accounts').select('id, scope, starting_balance'),
@@ -3766,7 +3823,7 @@ async function openRecurringOverview() {
             <input type="number" step="0.01" class="recurring-amount-input" value="${Number(r.amount)}" style="width:90px; padding:4px; border:1px solid var(--border); border-radius:4px; text-align:right;">
             <button type="button" class="recurring-delete-btn" title="Verwijderen" style="border:none; background:none; cursor:pointer; font-size:16px;">🗑️</button>
           </div>
-          <div style="font-size:12px; color:#888; margin-top:4px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          <div style="font-size:12px; color:#6b6b6b; margin-top:4px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
             <span>${acc?.name || '(rekening onbekend)'} ·</span>
             <span class="recurring-next-date-label">eerstvolgende: ${formatDateNL(r.next_date)}</span>
             <button type="button" class="select-toggle-btn recurring-date-edit-btn" style="padding:2px 8px; font-size:11px;">Datum wijzigen</button>
@@ -3899,7 +3956,7 @@ async function loadTransactions() {
   // Deze tab toont alleen privé — zakelijke transacties horen in de Zakelijk-tab, niet hier tussendoor.
   const priveAccountIds = (accounts || []).filter(a => a.scope !== 'zakelijk').map(a => a.id);
 
-  const { data: allTxnsWithAmount, error } = await fetchAllRows(() => sb.from('transactions').select('id, account_id, amount, date, cleared').order('date', { ascending: true }));
+  const { data: allTxnsWithAmount, error } = await getLedger();
   if (error) { console.error(error); return; }
   const runningByAccount = {};
   const balanceAfter = {};
@@ -4663,8 +4720,8 @@ async function loadPossessions() {
 
   el.innerHTML = possessions.map(p => `
     <div class="poss-card" data-poss="${p.id}">
-      ${firstPhoto[p.id] ? `<img src="${firstPhoto[p.id]}">` : `<div style="height:90px; background:#eee;"></div>`}
-      <div class="poss-name">${p.name}</div>
+      ${firstPhoto[p.id] ? `<img src="${firstPhoto[p.id]}">` : `<div style="height:90px; background:#eee; display:flex; align-items:center; justify-content:center; font-size:28px;">${({ kleding: '👕', meubilair: '🛋️', apparaten: '🔌' })[p.category] || '🛍️'}</div>`}
+      <div class="poss-name">${escapeHtml(p.name)}</div>
     </div>
   `).join('');
   document.querySelectorAll('.poss-card').forEach(card => {
@@ -4772,7 +4829,9 @@ async function loadAccounts() {
   // niet tegen de bank bevestigde transactie heeft al wél plaatsgevonden en hoort mee te tellen.
   // v3.63: per rekening ook het saldo zónder de onbevestigde transacties ("bevestigd"), want dat is
   // wat de bank zelf toont. Zo is een verschil met het banksaldo direct te verklaren.
-  const { data: allTxns } = await fetchAllRows(() => sb.from('transactions').select('id, account_id, amount, cleared').lte('date', toLocalISODate(new Date())));
+  const accTodayStr = toLocalISODate(new Date());
+  const { data: ledgerForAccounts } = await getLedger();
+  const allTxns = (ledgerForAccounts || []).filter(t => t.date <= accTodayStr);
   const txnSumByAccount = {}, unclearedSumByAccount = {}, unclearedCountByAccount = {};
   (allTxns || []).forEach(t => {
     const amt = Number(t.amount);
@@ -5152,7 +5211,7 @@ async function loadCategoryManager() {
     return `
       <div class="cat-tree-row ${depthClass}" draggable="true" data-id="${c.id}" data-parent="${c.parent_id || ''}" style="margin-left:${depth * 16}px;">
         <div style="display:flex; align-items:center; gap:4px;">
-          ${hasKids ? `<button data-toggle="${c.id}" style="border:none; background:none; cursor:pointer; font-size:11px; width:16px;">${isCollapsed ? '▸' : '▾'}</button>` : `<span style="width:16px; display:inline-block;"></span>`}
+          ${hasKids ? `<button data-toggle="${c.id}" style="border:none; background:none; cursor:pointer; font-size:14px; width:40px; min-height:40px;">${isCollapsed ? '▸' : '▾'}</button>` : `<span style="width:40px; display:inline-block;"></span>`}
           <div>${c.name}</div>
         </div>
         <div class="cat-actions">
@@ -5422,8 +5481,9 @@ async function loadZakelijk() {
   const zakAccountIds = (zakAccounts || []).map(a => a.id);
   const balanceAfter = {};
   if (zakAccountIds.length > 0) {
-    const { data: allZakTxnsWithAmount } = await fetchAllRows(() => sb.from('transactions').select('id, account_id, amount, date, cleared')
-      .in('account_id', zakAccountIds).order('date', { ascending: true }));
+    const { data: zakLedger } = await getLedger();
+    const zakIdSet = new Set(zakAccountIds.map(String));
+    const allZakTxnsWithAmount = (zakLedger || []).filter(t => zakIdSet.has(String(t.account_id)));
     const runningByAccount = {};
     // v3.65: alleen bevestigde transacties tellen mee in het lopende saldo (zoals de bank)
     // v3.66: alleen de laatst bevestigde transactie van een rekening+dag toont het saldo
@@ -5569,7 +5629,7 @@ attachCategoryPicker(
   document.getElementById('zak-txn-category-popup'),
   () => zakCatTree,
   () => zakCatLeaves,
-  { emptyLabel: '(geen categorie — Ongecategoriseerd)', onSelect: () => {} }
+  { emptyLabel: '(geen categorie)', onSelect: () => {} }
 );
 
 async function openZakTxnModal() {
@@ -5592,6 +5652,7 @@ async function openZakTxnModal() {
     return;
   }
   document.getElementById('zak-txn-modal-bg').classList.add('open');
+  document.getElementById('zak-txn-amount').focus(); // v3.73: begin met het bedrag
 }
 
 document.getElementById('zak-txn-cancel').addEventListener('click', () => {
@@ -5602,7 +5663,7 @@ document.getElementById('zak-txn-save').addEventListener('click', async () => {
   const account_id = document.getElementById('zak-txn-account').value;
   const catLabel = document.getElementById('zak-txn-category-search').value.trim();
   if (catLabel && !zakCatLabelToId[catLabel]) {
-    alert('Kies een bestaande categorie uit de lijst, of laat het veld leeg voor Ongecategoriseerd.');
+    alert('Kies een bestaande categorie uit de lijst, of laat het veld leeg voor geen categorie.');
     return;
   }
   const category_id = catLabel ? zakCatLabelToId[catLabel] : null;
