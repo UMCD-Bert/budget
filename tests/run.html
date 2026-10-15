@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="nl"><head><meta charset="utf-8"><title>Budget-tests</title>
+<style>body{font:14px -apple-system,Helvetica,Arial,sans-serif;margin:16px;max-width:760px} .ok{color:#2e7d32} .fail{color:#c62828;font-weight:bold} iframe{width:375px;height:700px;border:1px solid #ccc;float:right;margin-left:16px}</style></head>
+<body>
+<h1>Budget-tests</h1>
+<p>Draait de échte <code>../index.html</code> met een nagebootste database. Serveer de projectmap met <code>python3 -m http.server</code> en open deze pagina.</p>
+<iframe id="app" src="../index.html"></iframe>
+<div id="uitkomst">Bezig…</div>
+<script src="mock-supabase.js"></script>
+<script src="fixture.js"></script>
+<script src="budget.test.js"></script>
+<script>
+document.getElementById('app').addEventListener('load', async () => {
+  const w = document.getElementById('app').contentWindow;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  try {
+    for (let i = 0; i < 50 && !w.initApp; i++) await wait(100);
+    window.installMockSupabase(w.eval('sb'), window.makeBudgetFixture(), w);
+    w.eval('appInitialized = true');
+    await w.initApp();
+    await wait(1200);
+    const res = await window.runBudgetTests(w);
+    const fout = res.filter(r => !r.ok).length;
+    document.getElementById('uitkomst').innerHTML = `<h2 class="${fout ? 'fail' : 'ok'}">${res.length - fout} van ${res.length} geslaagd</h2>` +
+      res.map(r => `<div class="${r.ok ? 'ok' : 'fail'}">${r.ok ? '✓' : '✗'} ${r.naam}${r.ok ? '' : ' — ' + r.detail}</div>`).join('');
+    window.__testResultaat = res;
+  } catch (e) {
+    document.getElementById('uitkomst').innerHTML = '<div class="fail">Test-run mislukt: ' + (e && e.message || e) + '</div>';
+    window.__testResultaat = [{ naam: 'run', ok: false, detail: String(e && e.stack || e) }];
+  }
+});
+</script>
+</body></html>
