@@ -16,7 +16,11 @@
   input[type=number] { -moz-appearance:textfield; }
   body { font-family: -apple-system, Helvetica, Arial, sans-serif; margin:0; background:var(--bg); color:#222; }
   html { overflow-x:hidden; overscroll-behavior-x:none; }
-  body { overflow-x:hidden; overscroll-behavior-x:none; }
+  /* v3.70: overflow-x:hidden op html ÉN body maakt van body een eigen scrollcontainer, waardoor
+     position:sticky (topbalk, Transacties-balk, maandkeuze) niet meer meescrolt. clip knipt zonder
+     scrollcontainer te worden. */
+  body { overscroll-behavior-x:none; }
+  @supports (overflow-x: clip) { body { overflow-x:clip; } }
   #offline-banner { display:none; background:#fff3cd; color:#7a5b00; padding:8px 16px; font-size:13px; text-align:center; }
   #offline-banner.show { display:block; }
   #login-screen { display:none; position:fixed; inset:0; background:var(--bg); z-index:1000; align-items:center; justify-content:center; padding:20px; }
@@ -127,7 +131,7 @@
   .budget-group.hoofdcat-group > h3 { padding-left:0; font-size:14px; font-weight:500; }
   .cat-numbers { display:flex; gap:6px; align-items:center; margin-top:4px; }
   .cat-numbers .num-col { flex:1; min-width:0; text-align:center; }
-  .cat-numbers .num-label { font-size:9px; text-transform:uppercase; color:#999; letter-spacing:.3px; }
+  .cat-numbers .num-label { font-size:10px; text-transform:uppercase; color:#6b6b6b; letter-spacing:.3px; }
   .cat-numbers .num-value { font-weight:bold; font-size:13px; }
   .cat-numbers .num-value.positive { color:#222; }
   .cat-numbers .num-value.negative { color:var(--red); }
@@ -143,8 +147,39 @@
   .leaf-stats-row .leaf-stat-value.negative { color:var(--red); font-weight:600; }
   .leaf-stats-row .leaf-stat-value.neutral { color:#888; font-weight:400; }
   .cat-detail-link { background:none; border:none; padding:0; color:var(--green); font-size:13px; cursor:pointer; text-decoration:underline; touch-action:manipulation; }
-  .cat-row-summary { display:flex; align-items:center; gap:10px; cursor:pointer; padding:11px 2px; touch-action:manipulation; }
-  .cat-row-summary .name { font-size:14px; font-weight:400; color:#222; flex:0 1 auto; min-width:0; overflow-wrap:break-word; }
+  .cat-row-summary { display:block; cursor:pointer; padding:10px 2px 8px; min-height:44px; touch-action:manipulation; }
+  .cat-row-summary .crs-top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .cat-row-summary .name { font-size:14px; font-weight:400; color:#222; flex:1 1 auto; min-width:0; overflow-wrap:break-word; }
+  .cat-row-summary .cat-row-bar-track { width:100%; margin:6px 0 4px; flex:none; }
+  .crs-sub { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:12px; color:#6b6b6b; min-height:18px; }
+  .chip-cover { border:1px solid var(--green); color:var(--green); background:#fff; border-radius:8px; padding:8px 14px; margin:-6px 0; font-size:12px; font-weight:bold; cursor:pointer; touch-action:manipulation; flex-shrink:0; }
+  .grp-head { cursor:pointer; padding:8px 0 8px; min-height:44px; touch-action:manipulation; }
+  .grp-top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:14px; font-weight:500; }
+  .hoofdcat-group > .grp-head .grp-top { font-size:15px; }
+  .grp-top .cat-name { min-width:0; overflow-wrap:break-word; }
+  .grp-num { flex-shrink:0; }
+  .grp-num.negative { color:var(--red); }
+  .grp-num.neutral { color:#6b6b6b; }
+  .grp-sub { font-size:12px; color:#6b6b6b; margin-top:2px; }
+  .grp-edit { margin:0 0 4px; text-align:right; }
+  .grp-edit .cat-detail-link { padding:8px 0; }
+  .red-badge { display:inline-block; background:#fdecea; color:var(--red); border-radius:6px; padding:1px 6px; font-size:11px; font-weight:bold; margin-left:4px; vertical-align:1px; }
+  .ie-tabs .ie-tab-btn { position:relative; }
+  .tab-red { position:absolute; top:-7px; right:-3px; background:var(--red); color:#fff; border-radius:9px; min-width:18px; padding:0 5px; font-size:11px; line-height:18px; border:1.5px solid #fff; }
+  .rta-note { font-size:12px; color:#6b6b6b; margin-top:2px; }
+  .attn-card { background:#fff8e1; border:1px solid #ffe082; border-radius:8px; padding:6px 12px 4px; margin-bottom:12px; }
+  .attn-title { font-size:12px; font-weight:bold; color:#8a5a00; text-transform:uppercase; letter-spacing:.3px; padding:4px 0; }
+  .attn-row { display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; min-height:44px; background:none; border:none; border-top:0.5px solid #ffe082; padding:0; font-size:14px; color:#222; text-align:left; cursor:pointer; touch-action:manipulation; }
+  .attn-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#d98300; margin-right:8px; }
+  .attn-go { font-size:12px; color:#8a5a00; flex-shrink:0; }
+  .budget-monthbar { display:flex; align-items:center; justify-content:center; gap:10px; margin:0 0 8px; }
+  #budget-month-label { font-weight:bold; text-transform:capitalize; min-width:130px; text-align:center; }
+  .select-toggle-btn.nav-btn { min-width:44px; min-height:40px; font-size:22px; line-height:1; padding:4px 12px; }
+  .ie-tabs .ie-tab-btn { min-height:40px; }
+  .ba-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:0.5px solid var(--border); }
+  .ba-row label { margin:0 !important; flex:1; min-width:0; font-size:14px !important; color:#222 !important; display:flex !important; flex-direction:column; }
+  .ba-spent { font-size:12px; color:#6b6b6b; }
+  .modal .ba-row input { width:96px !important; margin:0 !important; text-align:right; flex-shrink:0; }
   .cat-row-bar-track { flex:1; height:4px; border-radius:2px; background:#e3e3dd; overflow:hidden; min-width:24px; }
   .cat-row-bar-fill { height:100%; }
   .resterend-inline { font-size:14px; min-width:56px; text-align:right; flex-shrink:0; }
@@ -257,34 +292,32 @@
     <div class="rta">
       <div style="font-size:12px; color:#666;">Klaar om toe te wijzen</div>
       <div class="amount" id="rta-amount">€ 0,00</div>
-      <div style="font-size:11px; color:#888; margin-top:6px;">Totaal saldo (privé + zakelijk): <span id="combined-total">€ 0,00</span></div>
+      <div id="rta-note" class="rta-note"></div>
+      <div style="font-size:11px; color:#6b6b6b; margin-top:6px;">Totaal saldo (privé + zakelijk): <span id="combined-total">€ 0,00</span></div>
     </div>
-    <div style="display:flex; align-items:center; justify-content:center; gap:16px; margin:10px 0;">
-      <button id="budget-month-prev" class="select-toggle-btn" style="padding:4px 12px; font-size:16px;">‹</button>
-      <div id="budget-month-label" style="font-weight:bold; text-transform:capitalize; min-width:140px; text-align:center;"></div>
-      <button id="budget-month-next" class="select-toggle-btn" style="padding:4px 12px; font-size:16px;">›</button>
+    <div id="budget-attention"></div>
+    <div class="budget-monthbar">
+      <button id="budget-month-prev" class="select-toggle-btn nav-btn" aria-label="Vorige maand">‹</button>
+      <div id="budget-month-label"></div>
+      <button id="budget-month-next" class="select-toggle-btn nav-btn" aria-label="Volgende maand">›</button>
     </div>
-    <div class="ie-tabs" data-ie-tabs="budget">
-      <button class="ie-tab-btn" data-ie-type="income">Inkomsten</button>
-      <button class="ie-tab-btn active" data-ie-type="expense">Uitgaven</button>
-      <button class="ie-tab-btn" data-ie-type="reservation">Reserveringen</button>
+    <div class="sticky-actions-bar" id="budget-sticky">
+      <div class="ie-tabs" data-ie-tabs="budget">
+        <button class="ie-tab-btn" data-ie-type="income">Inkomsten</button>
+        <button class="ie-tab-btn active" data-ie-type="expense">Uitgaven</button>
+        <button class="ie-tab-btn" data-ie-type="reservation">Reserveringen</button>
+      </div>
     </div>
     <div class="income-expense-columns" data-ie-columns="budget">
       <div class="ie-column" data-ie-type="income">
-        <h3 class="ie-column-heading income-heading">Inkomsten</h3>
-        <div class="budget-col-headers"><div class="budget-col-header-name"></div><div class="budget-col-header-num">Begroot</div><div class="budget-col-header-num">Gerealis.</div><div class="budget-col-header-num">Resterend</div></div>
         <div id="budget-groups-income"><div class="empty">Nog geen categorieën.</div></div>
         <div id="budget-total-income" class="ie-column-total"></div>
       </div>
       <div class="ie-column mobile-active" data-ie-type="expense">
-        <h3 class="ie-column-heading expense-heading">Uitgaven</h3>
-        <div class="budget-col-headers"><div class="budget-col-header-name"></div><div class="budget-col-header-num">Begroot</div><div class="budget-col-header-num">Gerealis.</div><div class="budget-col-header-num">Resterend</div></div>
         <div id="budget-groups-expense"><div class="empty">Nog geen categorieën.</div></div>
         <div id="budget-total-expense" class="ie-column-total"></div>
       </div>
       <div class="ie-column" data-ie-type="reservation">
-        <h3 class="ie-column-heading reservation-heading">Reserveringen</h3>
-        <div class="budget-col-headers"><div class="budget-col-header-name"></div><div class="budget-col-header-num">Begroot</div><div class="budget-col-header-num">Gerealis.</div><div class="budget-col-header-num">Resterend</div></div>
         <div id="budget-groups-reservation"><div class="empty">Nog geen categorieën.</div></div>
         <div id="budget-total-reservation" class="ie-column-total"></div>
       </div>
@@ -672,6 +705,34 @@
   </div>
 </div>
 
+<div class="modal-bg" id="cover-modal-bg">
+  <div class="modal">
+    <h3 style="margin-top:0;">Dek af: <span id="cover-target-name"></span></h3>
+    <div id="cover-need" style="font-size:14px; font-weight:bold; color:var(--red);"></div>
+    <label for="cover-source">Haal het geld uit</label>
+    <select id="cover-source"></select>
+    <label for="cover-amount">Bedrag</label>
+    <input type="number" id="cover-amount" inputmode="decimal" step="1" min="0">
+    <div id="cover-preview" style="font-size:12px; color:#6b6b6b; margin-top:8px;"></div>
+    <div id="cover-error" style="font-size:13px; color:var(--red); margin-top:8px;"></div>
+    <div class="actions">
+      <button class="btn-cancel" id="cover-cancel" type="button">Annuleren</button>
+      <button class="btn-save" id="cover-save" type="button">Dekken</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="bulk-assign-modal-bg">
+  <div class="modal">
+    <h3 style="margin:0;" id="ba-title"></h3>
+    <div id="ba-sub" style="font-size:12px; color:#6b6b6b; margin-bottom:6px;"></div>
+    <div id="ba-rows"></div>
+    <div id="ba-error" style="font-size:13px; color:var(--red); margin-top:8px;"></div>
+    <div class="actions">
+      <button class="btn-cancel" id="ba-cancel" type="button">Annuleren</button>
+      <button class="btn-save" id="ba-save" type="button">Opslaan</button>
+    </div>
+  </div>
+</div>
 <div class="modal-bg" id="new-month-modal-bg">
   <div class="modal">
     <h3 style="margin-top:0;">Nieuwe maand: <span id="new-month-label"></span></h3>
@@ -914,7 +975,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.69';
+const APP_VERSION = 'v3.70';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -2416,18 +2477,26 @@ const assignSaveTimers = {};
 const pendingAssignValues = {};
 function scheduleAssignSave(catId, value) {
   const key = String(catId);
+  // v3.70: de maand wordt vastgelegd op het moment van tikken — wisselde je binnen die halve seconde
+  // van maand, dan belandde het bedrag eerder in de verkeerde maand.
+  const monthStr = monthBounds(budgetViewMonth).monthStr;
   pendingAssignValues[key] = value;
   if (assignSaveTimers[key]) clearTimeout(assignSaveTimers[key]);
   assignSaveTimers[key] = setTimeout(async () => {
     delete assignSaveTimers[key];
-    const { monthStr: m } = monthBounds(budgetViewMonth);
-    const { error } = await sb.from('budget_months')
-      .upsert({ category_id: catId, month: m, assigned: value }, { onConflict: 'category_id,month' });
-    if (error) { console.error(error); alert('Opslaan van toewijzing mislukt.'); }
+    const error = await upsertAssignments([{ category_id: catId, month: monthStr, assigned: value }]);
+    if (error) {
+      console.error(error);
+      alert('Opslaan van toewijzing mislukt.');
+      delete pendingAssignValues[key];
+      loadBudget();
+      return;
+    }
+    applyAssignLocal(catId, monthStr, value);
     // Alleen opruimen als dit nog steeds de laatste/actuele waarde is (er kan tijdens het opslaan
-    // alweer een nieuwe klik zijn gestart, die zijn eigen timer + pending-waarde heeft klaargezet).
+    // alweer een nieuwe wijziging zijn gestart, die zijn eigen timer + pending-waarde heeft).
     if (pendingAssignValues[key] === value) delete pendingAssignValues[key];
-    loadBudget();
+    renderBudget();
   }, 500);
 }
 
@@ -2853,6 +2922,42 @@ async function updateMoneyAge() {
   updateTopbarHeightVar();
 }
 
+// ---- Budget (v3.70) ----
+// De zware gegevens worden één keer opgehaald (budgetRaw); elke weergave leidt daar opnieuw uit af
+// (deriveBudgetModel). Uit-/inklappen, "alleen rood" en een bedrag aanpassen hoeven daardoor niet
+// meer alle historie opnieuw op te halen — alleen maandwissel of een nieuwe transactie doet dat nog.
+let budgetRaw = null;
+let budgetModel = null;
+let budgetOnlyRed = false;
+let budgetRenderPending = false;
+const budgetGroupOpen = new Map(); // String(categorie-id) -> expliciete keuze van de gebruiker (open/dicht)
+const BUDGET_TYPE_LABELS = { income: 'Inkomsten', expense: 'Uitgaven', reservation: 'Reserveringen' };
+
+function budgetShowOffline(monthStr) {
+  const snap = cacheSnapshotGet('budget_' + monthStr);
+  const containerExpense = document.getElementById('budget-groups-expense');
+  const containerIncome = document.getElementById('budget-groups-income');
+  const containerReservation = document.getElementById('budget-groups-reservation');
+  if (snap) {
+    document.getElementById('rta-amount').textContent = snap.data.rtaText;
+    document.getElementById('rta-amount').className = snap.data.rtaClass;
+    document.getElementById('combined-total').textContent = snap.data.combinedTotalText;
+    document.getElementById('rta-note').innerHTML = snap.data.rtaNoteHTML || '';
+    document.getElementById('budget-attention').innerHTML = snap.data.attentionHTML || '';
+    containerExpense.innerHTML = snap.data.expenseHTML;
+    containerIncome.innerHTML = snap.data.incomeHTML;
+    containerReservation.innerHTML = snap.data.reservationHTML;
+    document.getElementById('budget-total-expense').innerHTML = snap.data.totalExpenseHTML;
+    document.getElementById('budget-total-income').innerHTML = snap.data.totalIncomeHTML;
+    document.getElementById('budget-total-reservation').innerHTML = snap.data.totalReservationHTML;
+    showOfflineBanner(snap.ts);
+  } else {
+    containerExpense.innerHTML = '<div class="empty">Geen verbinding en nog geen eerder opgeslagen gegevens voor deze maand.</div>';
+    containerIncome.innerHTML = '';
+    containerReservation.innerHTML = '';
+  }
+}
+
 async function loadBudget() {
   const { monthStr, startStr, endStr } = monthBounds(budgetViewMonth);
   updateBudgetMonthLabel();
@@ -2862,130 +2967,148 @@ async function loadBudget() {
     .select('id, parent_id, name, sort_order, type')
     .eq('scope', 'prive')
     .order('sort_order');
-  if (cErr) {
-    console.error(cErr);
-    const snap = cacheSnapshotGet('budget_' + monthStr);
-    const containerExpense = document.getElementById('budget-groups-expense');
-    const containerIncome = document.getElementById('budget-groups-income');
-    const containerReservation = document.getElementById('budget-groups-reservation');
-    if (snap) {
-      document.getElementById('rta-amount').textContent = snap.data.rtaText;
-      document.getElementById('rta-amount').className = snap.data.rtaClass;
-      document.getElementById('combined-total').textContent = snap.data.combinedTotalText;
-      containerExpense.innerHTML = snap.data.expenseHTML;
-      containerIncome.innerHTML = snap.data.incomeHTML;
-      containerReservation.innerHTML = snap.data.reservationHTML;
-      document.getElementById('budget-total-expense').innerHTML = snap.data.totalExpenseHTML;
-      document.getElementById('budget-total-income').innerHTML = snap.data.totalIncomeHTML;
-      document.getElementById('budget-total-reservation').innerHTML = snap.data.totalReservationHTML;
-      showOfflineBanner(snap.ts);
-    } else {
-      containerExpense.innerHTML = '<div class="empty">Geen verbinding en nog geen eerder opgeslagen gegevens voor deze maand.</div>';
-      containerIncome.innerHTML = '';
-      containerReservation.innerHTML = '';
-    }
-    return;
-  }
+  if (cErr) { console.error(cErr); budgetShowOffline(monthStr); return; }
 
   catsById = {};
   (cats || []).forEach(c => catsById[c.id] = c);
-  function rootTypeOf(catId) { return rootTypeOfCategory(catId, catsById); }
 
-  // Deze maand alleen (voor de Begroot/Gerealiseerd-kolommen en de voortgangsbalk)
-  const { data: budgetRows } = await sb
-    .from('budget_months')
-    .select('category_id, assigned')
-    .eq('month', monthStr);
-  const assignedMap = {};
-  (budgetRows || []).forEach(r => assignedMap[r.category_id] = Number(r.assigned));
+  // Bovengrens (exclusief) voor transacties: einde van de bekeken maand, maar minimaal t/m vandaag —
+  // het Klaar-om-toe-te-wijzen-bedrag rekent altijd t/m vandaag, ook als je een andere maand bekijkt.
+  const todayStr = toLocalISODate(new Date());
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = toLocalISODate(tomorrow);
+  const limitStr = endStr > tomorrowStr ? endStr : tomorrowStr;
 
-  if (Object.keys(assignedMap).length === 0 && newMonthPromptShownFor !== monthStr) {
+  const [budgetRes, txnRes, splitRes, recurRes, accRes, stagingRes] = await Promise.all([
+    fetchAllRows(() => sb.from('budget_months').select('id, category_id, month, assigned')),
+    fetchAllRows(() => sb.from('transactions').select('id, account_id, category_id, amount, date, cleared, link_type').lt('date', limitStr)),
+    fetchAllRows(() => sb.from('transaction_splits').select('id, transaction_id, category_id, amount, transactions!inner(date)').lt('transactions.date', limitStr)),
+    sb.from('recurring_transactions').select('category_id, amount, next_date').eq('active', true).gte('next_date', startStr).lt('next_date', endStr),
+    sb.from('accounts').select('id, scope, starting_balance'),
+    sb.from('bank_transactions_staging').select('id, accounts!inner(scope)').eq('accounts.scope', 'prive').is('processed_at', null)
+  ]);
+  // Zonder deze vier zou elk getal stilletjes fout zijn; dan liever de laatst bekende weergave.
+  if (budgetRes.error || txnRes.error || splitRes.error || accRes.error) {
+    console.error(budgetRes.error || txnRes.error || splitRes.error || accRes.error);
+    budgetShowOffline(monthStr);
+    return;
+  }
+
+  budgetRaw = {
+    cats: cats || [], monthStr, startStr, endStr, todayStr,
+    budgetRows: budgetRes.data || [], txns: txnRes.data || [], splits: splitRes.data || [],
+    recurring: recurRes.data || [], accounts: accRes.data || [],
+    stagingCount: (stagingRes && !stagingRes.error && stagingRes.data) ? stagingRes.data.length : 0
+  };
+
+  if (!budgetRaw.budgetRows.some(r => r.month === monthStr) && newMonthPromptShownFor !== monthStr) {
     newMonthPromptShownFor = monthStr;
     const labelEl = document.getElementById('new-month-label');
     if (labelEl) labelEl.textContent = budgetViewMonth.toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
     document.getElementById('new-month-modal-bg').classList.add('open');
   }
 
-  const { data: spentRows } = await sb
-    .from('transactions')
-    .select('category_id, amount')
-    .gte('date', startStr).lt('date', endStr);
-  const spentMap = {};
-  (spentRows || []).forEach(r => { if (r.category_id) spentMap[r.category_id] = (spentMap[r.category_id] || 0) + Number(r.amount); });
-  // Gesplitste transacties: de hoofdtransactie zelf heeft category_id = null (die valt hierboven al
-  // buiten de telling); in plaats daarvan telt elke split-rij mee onder zijn eigen categorie.
-  const { data: splitSpentRows } = await sb
-    .from('transaction_splits')
-    .select('category_id, amount, transactions!inner(date)')
-    .gte('transactions.date', startStr).lt('transactions.date', endStr);
-  (splitSpentRows || []).forEach(r => { if (r.category_id) spentMap[r.category_id] = (spentMap[r.category_id] || 0) + Number(r.amount); });
-
-  // Cumulatief t/m de bekeken maand (voor Resterend — bouwt op over maanden heen, voor alle drie de typen)
-  const { data: cumBudgetRows } = await fetchAllRows(() => sb
-    .from('budget_months')
-    .select('id, category_id, assigned')
-    .lte('month', monthStr));
-  const cumAssignedMap = {};
-  (cumBudgetRows || []).forEach(r => cumAssignedMap[r.category_id] = (cumAssignedMap[r.category_id] || 0) + Number(r.assigned));
-
-  const { data: cumSpentRows } = await fetchAllRows(() => sb
-    .from('transactions')
-    .select('id, category_id, amount')
-    .lt('date', endStr));
-  const cumSpentMap = {};
-  (cumSpentRows || []).forEach(r => { if (r.category_id) cumSpentMap[r.category_id] = (cumSpentMap[r.category_id] || 0) + Number(r.amount); });
-  const { data: cumSplitSpentRows } = await fetchAllRows(() => sb
-    .from('transaction_splits')
-    .select('id, category_id, amount, transactions!inner(date)')
-    .lt('transactions.date', endStr));
-  (cumSplitSpentRows || []).forEach(r => { if (r.category_id) cumSpentMap[r.category_id] = (cumSpentMap[r.category_id] || 0) + Number(r.amount); });
-
-  const { data: recurringRows } = await sb
-    .from('recurring_transactions')
-    .select('category_id, amount, next_date')
-    .eq('active', true)
-    .gte('next_date', startStr).lt('next_date', endStr);
-  const expectedMap = {};
-  (recurringRows || []).forEach(r => { if (r.category_id) expectedMap[r.category_id] = (expectedMap[r.category_id] || 0) + Number(r.amount); });
-
-  // Ready to Assign: startsaldi + alle ooit binnengekomen ongecategoriseerde privé-transacties + alle
-  // ooit ontvangen én aan een Inkomsten-categorie toegewezen bedragen, min alles wat ooit aan
-  // UITGAVEN- en RESERVERINGS-categorieën is toegewezen. Toewijzingen aan inkomsten-categorieën
-  // tellen niet mee bij het "toegewezen"-deel: dat is een verwacht bedrag (forward-looking target),
-  // geen oormerking. Maar zodra het salaris echt is binnengekomen (en dus gecategoriseerd staat),
-  // is dat gewoon vrij besteedbaar geld — zonder deze regel viel dat geld tussen wal en schip:
-  // niet "ongecategoriseerd" meer, maar ook nooit ergens als "beschikbaar" meegeteld.
-  const { data: priveAccountsForRta } = await sb.from('accounts').select('starting_balance').eq('scope', 'prive');
-  const totalStartingBalance = (priveAccountsForRta || []).reduce((s, a) => s + Number(a.starting_balance), 0);
-  // Gesplitste transacties hebben ook category_id = null, maar zijn NIET "unassigned" — hun bedrag is al
-  // volledig verdeeld over de split-categorieën hierboven. Zonder deze uitsluiting zou hun volle bedrag
-  // dubbel meetellen: één keer als "unassigned" hier, en nogmaals via de split-categorieën in spentMap.
-  const { data: splitTxnIdRows } = await fetchAllRows(() => sb.from('transaction_splits').select('id, transaction_id'));
-  const splitTxnIds = [...new Set((splitTxnIdRows || []).map(r => r.transaction_id))];
-  const makeRtaTxnsQuery = () => {
-    let q = sb.from('transactions').select('id, amount, category_id, accounts!inner(scope)').eq('accounts.scope', 'prive').lte('date', toLocalISODate(new Date()));
-    if (splitTxnIds.length > 0) q = q.not('id', 'in', `(${splitTxnIds.join(',')})`);
-    return q;
-  };
-  const { data: rtaTxns } = await fetchAllRows(makeRtaTxnsQuery);
-  const totalUnassigned = (rtaTxns || []).filter(r => r.category_id === null).reduce((s, r) => s + Number(r.amount), 0);
-  const totalReceivedIncome = (rtaTxns || []).filter(r => r.category_id !== null && rootTypeOf(r.category_id) === 'income').reduce((s, r) => s + Number(r.amount), 0);
-  const { data: allBudgetRows } = await fetchAllRows(() => sb.from('budget_months').select('id, category_id, assigned'));
-  const totalAssignedEver = (allBudgetRows || [])
-    .filter(r => rootTypeOf(r.category_id) !== 'income')
-    .reduce((s, r) => s + Number(r.assigned), 0);
-  const rta = totalStartingBalance + totalUnassigned + totalReceivedIncome - totalAssignedEver;
-  const rtaEl = document.getElementById('rta-amount');
-  rtaEl.textContent = formatEuroWhole(rta);
-  rtaEl.className = 'amount ' + (rta >= 0 ? 'positive' : 'negative');
-
-  const { data: allAccountsForTotal } = await sb.from('accounts').select('id, starting_balance');
-  const { data: allTxnsForTotal } = await fetchAllRows(() => sb.from('transactions').select('id, amount').lte('date', toLocalISODate(new Date())));
-  let combinedTotal = (allAccountsForTotal || []).reduce((s, a) => s + Number(a.starting_balance), 0);
-  combinedTotal += (allTxnsForTotal || []).reduce((s, t) => s + Number(t.amount), 0);
-  document.getElementById('combined-total').textContent = formatEuroWhole(combinedTotal);
-
+  budgetRenderPending = false;
+  renderBudget(true);
   await updateMoneyAge();
+}
+
+// Alle getallen van het Budget-scherm, afgeleid uit budgetRaw. Geen netwerk.
+function deriveBudgetModel(raw) {
+  const catsMap = {};
+  raw.cats.forEach(c => catsMap[c.id] = c);
+  const rootType = id => rootTypeOfCategory(id, catsMap);
+  const curMonthStr = raw.todayStr.slice(0, 8) + '01';
+  const add = (map, id, v) => { map[id] = (map[id] || 0) + v; };
+
+  const assignedMap = {}, cumAssignedMap = {}, cumAssignedNow = {};
+  let totalAssignedEver = 0;
+  raw.budgetRows.forEach(r => {
+    const a = Number(r.assigned);
+    if (r.month === raw.monthStr) add(assignedMap, r.category_id, a);
+    if (r.month <= raw.monthStr) add(cumAssignedMap, r.category_id, a);
+    if (r.month <= curMonthStr) add(cumAssignedNow, r.category_id, a);
+    if (rootType(r.category_id) !== 'income') totalAssignedEver += a;
+  });
+
+  const spentMap = {}, cumSpentMap = {}, cumSpentNow = {};
+  const book = (catId, dateStr, a) => {
+    if (!catId || !dateStr) return;
+    if (dateStr >= raw.startStr && dateStr < raw.endStr) add(spentMap, catId, a);
+    if (dateStr < raw.endStr) add(cumSpentMap, catId, a);
+    if (dateStr <= raw.todayStr) add(cumSpentNow, catId, a);
+  };
+  raw.txns.forEach(t => book(t.category_id, t.date, Number(t.amount)));
+  // Gesplitste transacties: de hoofdtransactie heeft category_id = null; elke split telt onder zijn eigen categorie.
+  raw.splits.forEach(s => book(s.category_id, Array.isArray(s.transactions) ? (s.transactions[0] || {}).date : (s.transactions || {}).date, Number(s.amount)));
+
+  const expectedMap = {};
+  raw.recurring.forEach(r => { if (r.category_id) add(expectedMap, r.category_id, Number(r.amount)); });
+
+  // Klaar om toe te wijzen: startsaldi + alle ongecategoriseerde privé-transacties + ontvangen inkomsten
+  // − alles wat aan uitgaven-/reserveringscategorieën is toegewezen. Gesplitste transacties tellen niet
+  // als "ongecategoriseerd" (hun bedrag zit al in de split-categorieën).
+  const priveIds = new Set(raw.accounts.filter(a => a.scope === 'prive').map(a => String(a.id)));
+  const splitTxnIds = new Set(raw.splits.map(s => String(s.transaction_id)));
+  let startPrive = 0, combinedTotal = 0;
+  raw.accounts.forEach(a => { combinedTotal += Number(a.starting_balance); if (a.scope === 'prive') startPrive += Number(a.starting_balance); });
+  let totalUnassigned = 0, totalReceivedIncome = 0, noCategory = 0, waiting = 0;
+  raw.txns.forEach(t => {
+    if (t.date > raw.todayStr) return;
+    const a = Number(t.amount);
+    combinedTotal += a;
+    if (!priveIds.has(String(t.account_id))) return;
+    if (!t.cleared) waiting++;
+    if (splitTxnIds.has(String(t.id))) return;
+    if (t.category_id === null || t.category_id === undefined) {
+      totalUnassigned += a;
+      if (a < 0 && t.link_type !== 'transfer' && t.link_type !== 'offset') noCategory++;
+    } else if (rootType(t.category_id) === 'income') {
+      totalReceivedIncome += a;
+    }
+  });
+
+  // v3.70: een overschreden categorie (cumulatief resterend < 0) is geld dat al is uitgegeven maar nergens
+  // vandaan gehaald. Dat bedrag gaat van "Klaar om toe te wijzen" af, zoals bij YNAB — anders lijkt er
+  // meer vrij te zijn dan er echt is.
+  const hasKids = new Set(raw.cats.filter(c => c.parent_id).map(c => String(c.parent_id)));
+  let overspend = 0;
+  raw.cats.forEach(c => {
+    if (hasKids.has(String(c.id)) || rootType(c.id) === 'income') return;
+    const r = (cumAssignedNow[c.id] || 0) + (cumSpentNow[c.id] || 0);
+    if (r < 0) overspend += -r;
+  });
+  const rtaBefore = startPrive + totalUnassigned + totalReceivedIncome - totalAssignedEver;
+  return {
+    assignedMap, cumAssignedMap, spentMap, cumSpentMap, expectedMap,
+    rta: rtaBefore - overspend, rtaBefore, overspend, combinedTotal,
+    noCategory, waiting, staging: raw.stagingCount
+  };
+}
+
+function renderBudget(force) {
+  if (!budgetRaw) return;
+  // Tijdens het typen in een bedragveld niet opnieuw tekenen (de invoer zou verdwijnen); dat gebeurt
+  // zodra het veld de focus kwijt is.
+  const active = document.activeElement;
+  const tabEl = document.getElementById('tab-budget');
+  if (!force && active && active.matches && active.matches('input.assign') && tabEl.contains(active)) {
+    budgetRenderPending = true;
+    return;
+  }
+  budgetRenderPending = false;
+  const raw = budgetRaw;
+  const model = deriveBudgetModel(raw);
+  budgetModel = model;
+
+  const rtaEl = document.getElementById('rta-amount');
+  rtaEl.textContent = formatEuroWhole(model.rta);
+  rtaEl.className = 'amount ' + (model.rta >= 0 ? 'positive' : 'negative');
+  document.getElementById('combined-total').textContent = formatEuroWhole(model.combinedTotal);
+  const rtaNoteEl = document.getElementById('rta-note');
+  rtaNoteEl.innerHTML = model.overspend > 0.5
+    ? `Rode categorieën (${formatEuroWhole(model.overspend)}) zijn hier al van afgetrokken.`
+    : '';
 
   const containerExpense = document.getElementById('budget-groups-expense');
   const containerIncome = document.getElementById('budget-groups-income');
@@ -2993,56 +3116,69 @@ async function loadBudget() {
   const totalExpenseEl = document.getElementById('budget-total-expense');
   const totalIncomeEl = document.getElementById('budget-total-income');
   const totalReservationEl = document.getElementById('budget-total-reservation');
-  if (!cats || cats.length === 0) {
-    containerExpense.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
-    containerIncome.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
-    containerReservation.innerHTML = '<div class="empty">Nog geen categorieën.</div>';
-    totalExpenseEl.innerHTML = ''; totalIncomeEl.innerHTML = ''; totalReservationEl.innerHTML = '';
+  const attentionEl = document.getElementById('budget-attention');
+  if (!raw.cats.length) {
+    ['Expense', 'Income', 'Reservation'].forEach(k => { document.getElementById('budget-groups-' + k.toLowerCase()).innerHTML = '<div class="empty">Nog geen categorieën.</div>'; document.getElementById('budget-total-' + k.toLowerCase()).innerHTML = ''; });
+    attentionEl.innerHTML = '';
     return;
   }
 
   const byParent = {};
-  cats.forEach(c => { const k = c.parent_id || 'root'; (byParent[k] = byParent[k] || []).push(c); });
-  Object.values(byParent).forEach(arr => arr.sort((a,b) => a.sort_order - b.sort_order));
+  raw.cats.forEach(c => { const k = c.parent_id || 'root'; (byParent[k] = byParent[k] || []).push(c); });
+  Object.values(byParent).forEach(arr => arr.sort((a, b) => a.sort_order - b.sort_order));
 
-  // Voor Inkomsten tonen we het bedrag nu als een gewoon saldo (gerealiseerd - begroot): een
-  // overschot (meer binnen dan begroot) is positief en groen, een tekort is negatief en rood —
-  // dezelfde simpele regel als Uitgaven/Reserveringen, geen aparte inkomen-uitzondering meer nodig.
+  // Inkomen is NIET cumulatief: iedere maand begint opnieuw. Saldo = gerealiseerd - begroot.
+  function leafNumbers(catId, type) {
+    const key = String(catId);
+    const begroot = pendingAssignValues.hasOwnProperty(key) ? pendingAssignValues[key] : (model.assignedMap[catId] || 0);
+    const gerealiseerd = model.spentMap[catId] || 0;
+    if (type === 'income') return { begroot, gerealiseerd, resterend: gerealiseerd - begroot };
+    return { begroot, gerealiseerd, resterend: (model.cumAssignedMap[catId] || 0) + (model.cumSpentMap[catId] || 0) };
+  }
   function resterendClass(resterend, type) {
-    // Bij Inkomsten betekent een negatief saldo simpelweg "nog niet ontvangen" — dat is normaal
-    // gedurende de maand, geen probleem zoals overschrijding bij Uitgaven/Reserveringen dat wel is.
+    // Bij Inkomsten betekent een negatief saldo simpelweg "nog niet ontvangen" — geen probleem.
     if (resterend < 0 && type === 'income') return 'neutral';
     return resterend >= 0 ? 'positive' : 'negative';
   }
 
-  function leafNumbers(catId, type) {
-    const pendingKey = String(catId);
-    const begroot = pendingAssignValues.hasOwnProperty(pendingKey) ? pendingAssignValues[pendingKey] : (assignedMap[catId] || 0);
-    const gerealiseerd = spentMap[catId] || 0;
-    if (type === 'income') {
-      // Inkomen is NIET cumulatief: iedere maand begint opnieuw. Saldo = gerealiseerd - begroot,
-      // zodat een overschot positief/groen wordt getoond in plaats van een negatief getal.
-      return { begroot, gerealiseerd, resterend: gerealiseerd - begroot };
+  const memo = {};
+  function info(c, type) {
+    if (memo[c.id]) return memo[c.id];
+    const kids = byParent[c.id];
+    let r;
+    if (!kids || !kids.length) {
+      const n = leafNumbers(c.id, type);
+      const isRed = type !== 'income' && Math.round(n.resterend) < 0;
+      r = { ...n, leaf: true, red: isRed ? 1 : 0, redSum: isRed ? -n.resterend : 0, leaves: 1 };
+    } else {
+      r = kids.reduce((acc, ch) => {
+        const s = info(ch, type);
+        return { begroot: acc.begroot + s.begroot, gerealiseerd: acc.gerealiseerd + s.gerealiseerd, resterend: acc.resterend + s.resterend,
+          red: acc.red + s.red, redSum: acc.redSum + s.redSum, leaves: acc.leaves + s.leaves };
+      }, { begroot: 0, gerealiseerd: 0, resterend: 0, red: 0, redSum: 0, leaves: 0 });
+      r.leaf = false;
     }
-    const cumBegroot = cumAssignedMap[catId] || 0;
-    const cumGerealiseerd = cumSpentMap[catId] || 0;
-    return { begroot, gerealiseerd, resterend: cumBegroot + cumGerealiseerd };
+    memo[c.id] = r;
+    return r;
   }
-
-  function computeSums(nodeId, type) {
-    const children = byParent[nodeId] || [];
-    if (children.length === 0) return leafNumbers(nodeId, type);
-    return children.reduce((acc, ch) => {
-      const s = computeSums(ch.id, type);
-      return { begroot: acc.begroot + s.begroot, gerealiseerd: acc.gerealiseerd + s.gerealiseerd, resterend: acc.resterend + s.resterend };
-    }, { begroot: 0, gerealiseerd: 0, resterend: 0 });
+  // Groepen met iets roods komen bovenaan; de onderlinge volgorde blijft verder zoals ingesteld.
+  function redFirst(arr, type) {
+    return arr.map((c, i) => [c, i]).sort((a, b) => ((info(b[0], type).red > 0) - (info(a[0], type).red > 0)) || (a[1] - b[1])).map(x => x[0]);
   }
+  function isGroupOpen(c, type) {
+    if (budgetOnlyRed) return true;
+    if (budgetGroupOpen.has(String(c.id))) return budgetGroupOpen.get(String(c.id));
+    return info(c, type).red > 0;
+  }
+  const fmtAbs = n => formatEuroWhole(Math.abs(n));
 
-  function budgetNumCells(n, type) {
-    return `
-      <div class="budget-num">${formatEuroWhole(n.begroot)}</div>
-      <div class="budget-num">${formatEuroWhole(n.gerealiseerd)}</div>
-      <div class="budget-num ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</div>`;
+  function progressBar(n, type, isRed) {
+    const target = Math.abs(n.begroot);
+    const actual = Math.abs(n.gerealiseerd);
+    const pct = target > 0 ? Math.min(100, (actual / target) * 100) : (actual > 0 ? 100 : 0);
+    const over = target > 0 && actual > target;
+    const color = (over || isRed) && type !== 'income' ? 'var(--red)' : '#999';
+    return `<div class="cat-row-bar-track"><div class="cat-row-bar-fill" style="width:${pct}%; background:${color};"></div></div>`;
   }
 
   function leafNumbersBlock(n, catId, type) {
@@ -3050,7 +3186,7 @@ async function loadBudget() {
     return `
       <div class="leaf-begroot-row">
         <span class="leaf-stat-label">Begroot</span>
-        <input class="assign" data-cat="${catId}" type="number" step="1" value="${Math.round(n.begroot)}">
+        <input class="assign" data-cat="${catId}" type="number" inputmode="decimal" step="1" value="${Math.round(n.begroot)}">
       </div>
       <div class="leaf-stats-row">
         <div class="leaf-stat"><span class="leaf-stat-label">Gerealiseerd</span> <span class="leaf-stat-value">${formatEuroWhole(n.gerealiseerd)}</span></div>
@@ -3058,44 +3194,29 @@ async function loadBudget() {
       </div>`;
   }
 
-  function progressBar(n, type) {
-    const target = Math.abs(n.begroot);
-    const actual = Math.abs(n.gerealiseerd);
-    const pct = target > 0 ? Math.min(100, (actual / target) * 100) : (actual > 0 ? 100 : 0);
-    const over = target > 0 && actual > target;
-    // Rustige grijze balk als het op schema ligt; alleen rood zodra je echt over budget zit
-    // (voor Inkomsten is "over" juist goed nieuws, dus daar blijft de balk grijs).
-    const color = over && type !== 'income' ? 'var(--red)' : '#999';
-    return `<div class="cat-row-bar-track"><div class="cat-row-bar-fill" style="width:${pct}%; background:${color};"></div></div>`;
-  }
-
-  function renderNode(c, type, depth) {
-    const children = byParent[c.id];
-    if (children && children.length > 0) {
-      const isCollapsed = collapsedCatIds.has(c.id);
-      const sums = computeSums(c.id, type);
-      const header = `
-        <h3 style="cursor:pointer;" data-budget-toggle="${c.id}">
-          <span class="cat-name">${isCollapsed ? '▸' : '▾'} ${c.name}</span>
-          ${budgetNumCells(sums, type)}
-        </h3>`;
-      const body = isCollapsed ? '' : children.map(ch => renderNode(ch, type, depth + 1)).join('');
-      return `<div class="group budget-group ${depth === 0 ? 'hoofdcat-group' : ''}">${header}${body}</div>`;
-    }
-    const n = leafNumbers(c.id, type);
-    const expectedDue = expectedMap[c.id] || 0;
-    const resterendMetVerwacht = n.resterend + expectedDue;
+  function renderLeaf(c, type) {
+    const n = info(c, type);
+    if (budgetOnlyRed && !n.red) return '';
+    const expectedDue = model.expectedMap[c.id] || 0;
     const isExpanded = expandedBudgetRowIds.has(String(c.id));
+    const isRed = n.red > 0;
+    let sub;
+    if (type === 'income') sub = n.begroot === 0 && n.gerealiseerd === 0 ? 'Niets verwacht deze maand' : `${fmtAbs(n.gerealiseerd)} ontvangen van ${fmtAbs(n.begroot)} verwacht`;
+    else sub = n.begroot === 0 && n.gerealiseerd === 0 ? 'Niet begroot deze maand' : `${fmtAbs(n.gerealiseerd)} van ${fmtAbs(n.begroot)} deze maand`;
+    const coverBtn = isRed ? `<button type="button" class="chip-cover" data-cover="${c.id}">Dek af</button>` : '';
     return `
       <div class="cat-row">
         <div class="cat-row-summary" data-expand-toggle="${c.id}">
-          <div class="name">${isExpanded ? '▾' : '▸'} ${c.name}</div>
-          ${progressBar(n, type)}
-          <div class="resterend-inline ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</div>
+          <div class="crs-top">
+            <div class="name">${isExpanded ? '▾' : '▸'} ${escapeHtml(c.name)}</div>
+            <div class="resterend-inline ${resterendClass(n.resterend, type)}">${formatEuroWhole(n.resterend)}</div>
+          </div>
+          ${progressBar(n, type, isRed)}
+          <div class="crs-sub"><span>${sub}</span>${coverBtn}</div>
         </div>
         <div class="cat-row-detail" style="${isExpanded ? '' : 'display:none;'}">
           ${leafNumbersBlock(n, c.id, type)}
-          ${expectedDue !== 0 ? `<div class="expected">Nog te verwachten deze maand: ${formatEuroWhole(resterendMetVerwacht)}</div>` : ''}
+          ${expectedDue !== 0 ? `<div class="expected">Nog te verwachten deze maand: ${formatEuroWhole(n.resterend + expectedDue)}</div>` : ''}
           <div style="margin-top:8px;">
             <button type="button" class="cat-detail-link" data-goto-txn="${c.id}">Bekijk transacties</button>
           </div>
@@ -3103,35 +3224,80 @@ async function loadBudget() {
       </div>`;
   }
 
+  function renderNode(c, type, depth) {
+    const kids = byParent[c.id];
+    if (!kids || !kids.length) return renderLeaf(c, type);
+    const s = info(c, type);
+    if (budgetOnlyRed && !s.red) return '';
+    const open = isGroupOpen(c, type);
+    const redBadge = s.red > 0 ? ` <span class="red-badge">${s.red} rood</span>` : '';
+    const subText = type === 'income'
+      ? `verwacht ${fmtAbs(s.begroot)} · ontvangen ${fmtAbs(s.gerealiseerd)}`
+      : `begroot ${fmtAbs(s.begroot)} · uitgegeven ${fmtAbs(s.gerealiseerd)} · ${s.leaves} ${s.leaves === 1 ? 'categorie' : 'categorieën'}`;
+    const head = `
+      <div class="grp-head" data-budget-toggle="${c.id}" data-open="${open ? 1 : 0}">
+        <div class="grp-top"><span class="cat-name">${open ? '▾' : '▸'} ${escapeHtml(c.name)}${redBadge}</span><span class="grp-num ${resterendClass(s.resterend, type)}">${formatEuroWhole(s.resterend)}</span></div>
+        <div class="grp-sub">${subText}</div>
+      </div>`;
+    let body = '';
+    if (open) {
+      const editLink = depth === 0 && !budgetOnlyRed ? `<div class="grp-edit"><button type="button" class="cat-detail-link" data-edit-group="${c.id}" data-type="${type}">Bedragen aanpassen</button></div>` : '';
+      body = editLink + redFirst(kids, type).map(ch => renderNode(ch, type, depth + 1)).join('');
+    }
+    return `<div class="group budget-group ${depth === 0 ? 'hoofdcat-group' : ''}">${head}${body}</div>`;
+  }
+
   const roots = byParent['root'] || [];
-  const expenseRoots = roots.filter(c => c.type !== 'income' && c.type !== 'reservation');
-  const incomeRoots = roots.filter(c => c.type === 'income');
-  const reservationRoots = roots.filter(c => c.type === 'reservation');
+  const rootsByType = {
+    expense: roots.filter(c => c.type !== 'income' && c.type !== 'reservation'),
+    income: roots.filter(c => c.type === 'income'),
+    reservation: roots.filter(c => c.type === 'reservation')
+  };
 
   function renderColumn(container, totalEl, rootsForType, type, emptyMsg, totalLabel) {
-    container.innerHTML = rootsForType.length ? rootsForType.map(c => renderNode(c, type, 0)).join('') : `<div class="empty">${emptyMsg}</div>`;
-    const grandTotal = rootsForType.reduce((acc, c) => {
-      const s = computeSums(c.id, type);
+    const ordered = type === 'income' ? rootsForType : redFirst(rootsForType, type);
+    const html = ordered.map(c => renderNode(c, type, 0)).join('');
+    container.innerHTML = html || `<div class="empty">${budgetOnlyRed ? 'Niets rood in deze lijst.' : emptyMsg}</div>`;
+    const grand = rootsForType.reduce((acc, c) => {
+      const s = info(c, type);
       return { begroot: acc.begroot + s.begroot, gerealiseerd: acc.gerealiseerd + s.gerealiseerd, resterend: acc.resterend + s.resterend };
     }, { begroot: 0, gerealiseerd: 0, resterend: 0 });
     const lastLabel = type === 'income' ? 'Saldo' : 'Resterend';
     totalEl.innerHTML = rootsForType.length ? `
       <div style="font-weight:bold; margin-bottom:6px;">Totaal ${totalLabel}</div>
       <div class="cat-numbers">
-        <div class="num-col"><div class="num-label">Begroot</div><div class="num-value">${formatEuroWhole(grandTotal.begroot)}</div></div>
-        <div class="num-col"><div class="num-label">Gerealiseerd</div><div class="num-value">${formatEuroWhole(grandTotal.gerealiseerd)}</div></div>
-        <div class="num-col"><div class="num-label">${lastLabel}</div><div class="num-value ${resterendClass(grandTotal.resterend, type)}">${formatEuroWhole(grandTotal.resterend)}</div></div>
+        <div class="num-col"><div class="num-label">Begroot</div><div class="num-value">${formatEuroWhole(grand.begroot)}</div></div>
+        <div class="num-col"><div class="num-label">Gerealiseerd</div><div class="num-value">${formatEuroWhole(grand.gerealiseerd)}</div></div>
+        <div class="num-col"><div class="num-label">${lastLabel}</div><div class="num-value ${resterendClass(grand.resterend, type)}">${formatEuroWhole(grand.resterend)}</div></div>
       </div>` : '';
   }
+  renderColumn(containerExpense, totalExpenseEl, rootsByType.expense, 'expense', 'Nog geen uitgavencategorieën.', 'Uitgaven');
+  renderColumn(containerIncome, totalIncomeEl, rootsByType.income, 'income', 'Nog geen inkomstencategorieën.', 'Inkomsten');
+  renderColumn(containerReservation, totalReservationEl, rootsByType.reservation, 'reservation', 'Nog geen reserveringscategorieën.', 'Reserveringen');
 
-  renderColumn(containerExpense, totalExpenseEl, expenseRoots, 'expense', 'Nog geen uitgavencategorieën.', 'Uitgaven');
-  renderColumn(containerIncome, totalIncomeEl, incomeRoots, 'income', 'Nog geen inkomstencategorieën.', 'Inkomsten');
-  renderColumn(containerReservation, totalReservationEl, reservationRoots, 'reservation', 'Nog geen reserveringscategorieën.', 'Reserveringen');
+  // Rode telling per type: badge op het tabje, zodat je ziet in welke lijst je moet kijken.
+  let redCount = 0, redSum = 0;
+  ['income', 'expense', 'reservation'].forEach(type => {
+    const typeRed = rootsByType[type].reduce((n, c) => n + (type === 'income' ? 0 : info(c, type).red), 0);
+    if (type !== 'income') { redCount += typeRed; redSum += rootsByType[type].reduce((n, c) => n + info(c, type).redSum, 0); }
+    const btn = document.querySelector(`[data-ie-tabs="budget"] .ie-tab-btn[data-ie-type="${type}"]`);
+    if (btn) btn.innerHTML = BUDGET_TYPE_LABELS[type] + (typeRed > 0 ? ` <span class="tab-red">${typeRed}</span>` : '');
+  });
+  if (redCount === 0) budgetOnlyRed = false;
+
+  const items = [];
+  if (redCount > 0) items.push(`<button type="button" class="attn-row" data-attn="red"><span><span class="attn-dot"></span>${redCount} ${redCount === 1 ? 'categorie' : 'categorieën'} rood · -${formatEuroWhole(redSum)}</span><span class="attn-go">${budgetOnlyRed ? 'Alles tonen' : 'Alleen rood'} ›</span></button>`);
+  if (model.noCategory > 0) items.push(`<button type="button" class="attn-row" data-attn="nocat"><span><span class="attn-dot"></span>${model.noCategory} ${model.noCategory === 1 ? 'uitgave' : 'uitgaven'} zonder categorie</span><span class="attn-go">Bekijk ›</span></button>`);
+  if (model.staging > 0) items.push(`<button type="button" class="attn-row" data-attn="staging"><span><span class="attn-dot"></span>${model.staging} ${model.staging === 1 ? 'bankboeking' : 'bankboekingen'} te verwerken</span><span class="attn-go">Verwerk ›</span></button>`);
+  if (model.waiting > 0) items.push(`<button type="button" class="attn-row" data-attn="wait"><span><span class="attn-dot"></span>${model.waiting} ${model.waiting === 1 ? 'transactie wacht' : 'transacties wachten'} op de bank</span><span class="attn-go">Bekijk ›</span></button>`);
+  attentionEl.innerHTML = items.length ? `<div class="attn-card"><div class="attn-title">Aandacht</div>${items.join('')}</div>` : '';
 
   hideOfflineBanner();
-  cacheSnapshotSet('budget_' + monthStr, {
+  cacheSnapshotSet('budget_' + raw.monthStr, {
     rtaText: rtaEl.textContent,
     rtaClass: rtaEl.className,
+    rtaNoteHTML: rtaNoteEl.innerHTML,
+    attentionHTML: attentionEl.innerHTML,
     combinedTotalText: document.getElementById('combined-total').textContent,
     expenseHTML: containerExpense.innerHTML,
     incomeHTML: containerIncome.innerHTML,
@@ -3140,51 +3306,236 @@ async function loadBudget() {
     totalIncomeHTML: totalIncomeEl.innerHTML,
     totalReservationHTML: totalReservationEl.innerHTML
   });
-
-  [containerExpense, containerIncome, containerReservation].forEach(container => {
-    container.querySelectorAll('input.assign').forEach(inp => {
-      inp.addEventListener('focus', function() { this.value = ''; });
-    });
-    container.querySelectorAll('[data-budget-toggle]').forEach(h3 => {
-      h3.addEventListener('click', () => {
-        const id = Number(h3.dataset.budgetToggle);
-        if (collapsedCatIds.has(id)) collapsedCatIds.delete(id); else collapsedCatIds.add(id);
-        loadBudget();
-      });
-    });
-    container.querySelectorAll('[data-expand-toggle]').forEach(row => {
-      row.addEventListener('click', () => {
-        const id = row.dataset.expandToggle;
-        if (expandedBudgetRowIds.has(id)) expandedBudgetRowIds.delete(id); else expandedBudgetRowIds.add(id);
-        loadBudget();
-      });
-    });
-    container.querySelectorAll('[data-goto-txn]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        goToTransactionsForCategory(Number(btn.dataset.gotoTxn), budgetViewMonth);
-      });
-    });
-    container.querySelectorAll('input.assign').forEach(inp => {
-      inp.addEventListener('change', () => {
-        const catId = inp.dataset.cat;
-        const raw = inp.value.trim();
-        // v3.29-bugfix: een leeg of ongeldig veld (o.a. door Chrome/Safari die <input type=number>
-        // leegmaakt bij Escape) mag NOOIT stilzwijgend als 0 worden opgeslagen — dat overschrijft
-        // per ongeluk het echte begrote bedrag. Bij lege/ongeldige invoer: gewoon terugzetten naar
-        // het laatst gerenderde begrote bedrag (defaultValue, gezet bij elke loadBudget()-render),
-        // niets opslaan.
-        if (raw === '' || isNaN(parseFloat(raw))) {
-          inp.value = inp.defaultValue;
-          return;
-        }
-        const value = Math.round(parseFloat(raw));
-        inp.value = value;
-        scheduleAssignSave(catId, value);
-      });
-    });
-  });
 }
+
+// Eén set luisteraars op het hele tabblad (i.p.v. per weergave opnieuw), zodat ook een uit de cache
+// teruggezette weergave werkt en het tekenen zelf geen luisteraars meer hoeft te koppelen.
+(function wireBudgetTab() {
+  const tabEl = document.getElementById('tab-budget');
+  tabEl.addEventListener('click', (e) => {
+    const t = e.target;
+    const cover = t.closest('[data-cover]');
+    if (cover) { e.stopPropagation(); openCoverModal(cover.dataset.cover); return; }
+    const goto = t.closest('[data-goto-txn]');
+    if (goto) { e.stopPropagation(); goToTransactionsForCategory(Number(goto.dataset.gotoTxn), budgetViewMonth); return; }
+    const edit = t.closest('[data-edit-group]');
+    if (edit) { e.stopPropagation(); openBulkAssign(edit.dataset.editGroup, edit.dataset.type); return; }
+    const attn = t.closest('[data-attn]');
+    if (attn) {
+      const kind = attn.dataset.attn;
+      if (kind === 'red') { budgetOnlyRed = !budgetOnlyRed; renderBudget(true); }
+      else if (kind === 'nocat') goToTransactionsWithoutCategory();
+      else document.querySelector('nav button[data-tab="transactions"]').click();
+      return;
+    }
+    const grp = t.closest('[data-budget-toggle]');
+    if (grp) {
+      budgetGroupOpen.set(String(grp.dataset.budgetToggle), grp.dataset.open !== '1');
+      renderBudget(true);
+      return;
+    }
+    const row = t.closest('[data-expand-toggle]');
+    if (row) {
+      const id = row.dataset.expandToggle;
+      if (expandedBudgetRowIds.has(id)) expandedBudgetRowIds.delete(id); else expandedBudgetRowIds.add(id);
+      renderBudget(true);
+    }
+  });
+  tabEl.addEventListener('focusin', (e) => {
+    if (e.target.matches && e.target.matches('input.assign')) e.target.value = '';
+  });
+  tabEl.addEventListener('focusout', (e) => {
+    const inp = e.target;
+    if (!inp.matches || !inp.matches('input.assign')) return;
+    // Een leeg veld (alleen aangetikt, niets getypt) herstelt de oude waarde en slaat niets op.
+    if (inp.value.trim() === '') inp.value = inp.defaultValue;
+    if (budgetRenderPending) setTimeout(() => { if (budgetRenderPending) renderBudget(); }, 350);
+  });
+  tabEl.addEventListener('change', (e) => {
+    const inp = e.target;
+    if (!inp.matches || !inp.matches('input.assign')) return;
+    const raw = inp.value.trim();
+    // Een leeg of ongeldig veld mag NOOIT stilzwijgend als 0 worden opgeslagen (v3.29-bugfix).
+    if (raw === '' || isNaN(parseFloat(raw))) { inp.value = inp.defaultValue; return; }
+    const value = Math.round(parseFloat(raw));
+    inp.value = value;
+    scheduleAssignSave(inp.dataset.cat, value);
+  });
+})();
+
+// Lokaal bijwerken van de opgehaalde begrotingsrijen, zodat er na opslaan niets opnieuw opgehaald hoeft.
+function applyAssignLocal(catId, monthStr, value) {
+  if (!budgetRaw) return;
+  const row = budgetRaw.budgetRows.find(r => String(r.category_id) === String(catId) && r.month === monthStr);
+  if (row) row.assigned = value;
+  else budgetRaw.budgetRows.push({ id: null, category_id: catId, month: monthStr, assigned: value });
+}
+
+async function upsertAssignments(rows) {
+  const { error } = await sb.from('budget_months').upsert(rows, { onConflict: 'category_id,month' });
+  return error;
+}
+
+// "Dek af": geld van een andere categorie (of uit Klaar om toe te wijzen) naar een rode categorie, door
+// het begrote bedrag in de bekeken maand te verschuiven. Er verandert niets aan transacties.
+let coverTargetId = null;
+function coverResterend(catId) {
+  const m = budgetModel;
+  return (m.cumAssignedMap[catId] || 0) + (m.cumSpentMap[catId] || 0);
+}
+function openCoverModal(catId) {
+  if (!budgetRaw || !budgetModel) return;
+  const target = catsById[catId];
+  if (!target) return;
+  coverTargetId = Number(catId);
+  const tekort = Math.max(0, -coverResterend(catId));
+  document.getElementById('cover-target-name').textContent = target.name;
+  document.getElementById('cover-need').textContent = `Tekort: ${formatEuroWhole(tekort)}`;
+  document.getElementById('cover-amount').value = Math.ceil(tekort - 0.0001);
+  document.getElementById('cover-error').textContent = '';
+
+  const raw = budgetRaw;
+  const hasKids = new Set(raw.cats.filter(c => c.parent_id).map(c => String(c.parent_id)));
+  const groups = {};
+  raw.cats.forEach(c => {
+    if (hasKids.has(String(c.id)) || String(c.id) === String(catId)) return;
+    if (rootTypeOfCategory(c.id, catsById) === 'income') return;
+    const r = coverResterend(c.id);
+    if (Math.round(r) < 1) return;
+    const parent = c.parent_id ? catsById[c.parent_id] : null;
+    const label = parent ? parent.name : 'Overig';
+    (groups[label] = groups[label] || []).push({ id: c.id, name: c.name, r });
+  });
+  let html = '<option value="">Kies waar het geld vandaan komt</option>';
+  if (budgetModel.rta >= 1) html += `<option value="rta">Klaar om toe te wijzen — ${formatEuroWhole(budgetModel.rta)}</option>`;
+  Object.keys(groups).sort().forEach(g => {
+    html += `<optgroup label="${escapeHtml(g)}">` + groups[g].sort((a, b) => b.r - a.r)
+      .map(x => `<option value="${x.id}">${escapeHtml(x.name)} — ${formatEuroWhole(x.r)} over</option>`).join('') + '</optgroup>';
+  });
+  document.getElementById('cover-source').innerHTML = html;
+  updateCoverPreview();
+  document.getElementById('cover-modal-bg').classList.add('open');
+}
+function updateCoverPreview() {
+  const el = document.getElementById('cover-preview');
+  if (coverTargetId === null || !budgetModel) { el.innerHTML = ''; return; }
+  const amt = Math.round(parseFloat(document.getElementById('cover-amount').value));
+  const src = document.getElementById('cover-source').value;
+  if (!amt || amt < 0) { el.innerHTML = ''; return; }
+  const target = catsById[coverTargetId];
+  const parts = [`${escapeHtml(target.name)}: ${formatEuroWhole(coverResterend(coverTargetId) + amt)}`];
+  let warn = '';
+  if (src === 'rta') {
+    parts.push(`Klaar om toe te wijzen: ${formatEuroWhole(budgetModel.rta - amt)}`);
+    if (budgetModel.rta - amt < 0) warn = 'Let op: Klaar om toe te wijzen komt dan onder nul.';
+  } else if (src) {
+    const left = coverResterend(Number(src)) - amt;
+    parts.push(`${escapeHtml(catsById[src].name)}: ${formatEuroWhole(left)}`);
+    if (left < 0) warn = `Let op: ${escapeHtml(catsById[src].name)} komt dan zelf onder nul.`;
+  }
+  el.innerHTML = 'Daarna — ' + parts.join(' · ') + (warn ? `<div class="red" style="margin-top:4px;">${warn}</div>` : '');
+}
+document.getElementById('cover-source').addEventListener('change', updateCoverPreview);
+document.getElementById('cover-amount').addEventListener('input', updateCoverPreview);
+document.getElementById('cover-cancel').addEventListener('click', () => {
+  document.getElementById('cover-modal-bg').classList.remove('open');
+  coverTargetId = null;
+});
+document.getElementById('cover-save').addEventListener('click', async () => {
+  const errEl = document.getElementById('cover-error');
+  const src = document.getElementById('cover-source').value;
+  const amt = Math.round(parseFloat(document.getElementById('cover-amount').value));
+  if (!src) { errEl.textContent = 'Kies eerst waar het geld vandaan komt.'; return; }
+  if (!amt || amt <= 0) { errEl.textContent = 'Vul een bedrag boven nul in.'; return; }
+  const btn = document.getElementById('cover-save');
+  btn.disabled = true;
+  errEl.textContent = '';
+  const month = monthBounds(budgetViewMonth).monthStr;
+  const ids = src === 'rta' ? [coverTargetId] : [coverTargetId, Number(src)];
+  // Eerst de actuele waarden uit de database, zodat een eerder aangepast bedrag niet wordt overschreven.
+  const { data: fresh, error: fErr } = await sb.from('budget_months').select('category_id, assigned').eq('month', month).in('category_id', ids);
+  if (fErr) { errEl.textContent = 'Kon de bedragen niet ophalen. Probeer het opnieuw.'; btn.disabled = false; return; }
+  const cur = id => { const r = (fresh || []).find(x => String(x.category_id) === String(id)); return r ? Number(r.assigned) : 0; };
+  const newTarget = cur(coverTargetId) + amt;
+  const e1 = await upsertAssignments([{ category_id: coverTargetId, month, assigned: newTarget }]);
+  if (e1) { console.error(e1); errEl.textContent = 'Opslaan mislukt. Er is niets gewijzigd.'; btn.disabled = false; return; }
+  let newSource = null;
+  if (src !== 'rta') {
+    newSource = cur(src) - amt;
+    const e2 = await upsertAssignments([{ category_id: Number(src), month, assigned: newSource }]);
+    if (e2) {
+      console.error(e2);
+      await upsertAssignments([{ category_id: coverTargetId, month, assigned: cur(coverTargetId) }]); // terugdraaien
+      errEl.textContent = 'Opslaan mislukt. Er is niets gewijzigd.';
+      btn.disabled = false;
+      return;
+    }
+  }
+  applyAssignLocal(coverTargetId, month, newTarget);
+  if (newSource !== null) applyAssignLocal(Number(src), month, newSource);
+  btn.disabled = false;
+  document.getElementById('cover-modal-bg').classList.remove('open');
+  coverTargetId = null;
+  renderBudget(true);
+});
+
+// "Bedragen aanpassen": alle categorieën van een hoofdgroep in één lijst invullen.
+let bulkAssignOriginal = {};
+function openBulkAssign(groupId, type) {
+  if (!budgetRaw || !budgetModel) return;
+  const byParent = {};
+  budgetRaw.cats.forEach(c => { const k = c.parent_id || 'root'; (byParent[k] = byParent[k] || []).push(c); });
+  Object.values(byParent).forEach(arr => arr.sort((a, b) => a.sort_order - b.sort_order));
+  const rows = [];
+  (function walk(id, trail) {
+    (byParent[id] || []).forEach(c => {
+      if ((byParent[c.id] || []).length) walk(c.id, trail.concat(c.name));
+      else rows.push({ id: c.id, label: trail.concat(c.name).join(' › ') });
+    });
+  })(groupId, []);
+  const group = catsById[groupId];
+  document.getElementById('ba-title').textContent = group ? group.name : 'Bedragen';
+  document.getElementById('ba-sub').textContent = `Begroot voor ${budgetViewMonth.toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })}`;
+  bulkAssignOriginal = {};
+  document.getElementById('ba-rows').innerHTML = rows.map((r, i) => {
+    const begroot = Math.round(budgetModel.assignedMap[r.id] || 0);
+    bulkAssignOriginal[r.id] = begroot;
+    const spent = budgetModel.spentMap[r.id] || 0;
+    return `<div class="ba-row"><label for="ba-in-${r.id}"><span>${escapeHtml(r.label)}</span><span class="ba-spent">${type === 'income' ? 'ontvangen' : 'uitgegeven'} ${formatEuroWhole(Math.abs(spent))}</span></label>
+      <input id="ba-in-${r.id}" class="ba-input" data-cat="${r.id}" type="number" inputmode="decimal" step="1" enterkeyhint="${i === rows.length - 1 ? 'done' : 'next'}" value="${begroot}"></div>`;
+  }).join('');
+  document.getElementById('ba-error').textContent = '';
+  document.getElementById('bulk-assign-modal-bg').classList.add('open');
+}
+document.getElementById('ba-rows').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || !e.target.classList.contains('ba-input')) return;
+  e.preventDefault();
+  const inputs = [...document.querySelectorAll('#ba-rows .ba-input')];
+  const next = inputs[inputs.indexOf(e.target) + 1];
+  if (next) { next.focus(); next.select(); } else e.target.blur();
+});
+document.getElementById('ba-rows').addEventListener('focusin', (e) => { if (e.target.classList.contains('ba-input')) e.target.select(); });
+document.getElementById('ba-cancel').addEventListener('click', () => document.getElementById('bulk-assign-modal-bg').classList.remove('open'));
+document.getElementById('ba-save').addEventListener('click', async () => {
+  const errEl = document.getElementById('ba-error');
+  const month = monthBounds(budgetViewMonth).monthStr;
+  const changes = [];
+  for (const inp of document.querySelectorAll('#ba-rows .ba-input')) {
+    const raw = inp.value.trim();
+    if (raw === '' || isNaN(parseFloat(raw))) { errEl.textContent = 'Vul bij elke categorie een getal in (0 mag ook).'; return; }
+    const v = Math.round(parseFloat(raw));
+    if (v !== bulkAssignOriginal[inp.dataset.cat]) changes.push({ category_id: Number(inp.dataset.cat), month, assigned: v });
+  }
+  if (!changes.length) { document.getElementById('bulk-assign-modal-bg').classList.remove('open'); return; }
+  const btn = document.getElementById('ba-save');
+  btn.disabled = true;
+  const err = await upsertAssignments(changes);
+  btn.disabled = false;
+  if (err) { console.error(err); errEl.textContent = 'Opslaan mislukt. Probeer het opnieuw.'; return; }
+  changes.forEach(c => applyAssignLocal(c.category_id, month, c.assigned));
+  document.getElementById('bulk-assign-modal-bg').classList.remove('open');
+  renderBudget(true);
+});
 
 // ---- Transactie toevoegen/bewerken (één scherm) ----
 let txnCatLabelToId = {};
@@ -3521,7 +3872,13 @@ async function loadTransactions() {
   query = query.in('account_id', scopedFilterIds);
   const searchTerm = mainTxnSearch.trim();
   const monthNav = document.getElementById('main-month-nav');
-  if (searchTerm) {
+  const noCatMode = txnCategoryFilter === 'none';
+  if (noCatMode && !searchTerm) {
+    // v3.70: "Zonder categorie" (vanuit Aandacht op Budget): alle uitgaven t/m vandaag zonder categorie,
+    // ongeacht maand — net als bij zoeken is maandnavigatie dan niet van toepassing.
+    monthNav.style.display = 'none';
+    query = query.is('category_id', null).lt('amount', 0).lte('date', toLocalISODate(new Date())).limit(300);
+  } else if (searchTerm) {
     // Zoeken doorzoekt bewust de volledige historie, ongeacht maand — maandnavigatie is dan niet van
     // toepassing en verbergt zich; zodra het zoekveld leeg is kom je terug in de maand waar je was.
     monthNav.style.display = 'none';
@@ -3563,7 +3920,12 @@ async function loadTransactions() {
   // via een aparte lookup bij. Zonder dit zou een gefilterde categorie die alleen via splitsingen
   // voorkomt, hier onterecht leeg lijken (dezelfde bug-klasse als destijds in de Budget-telling zelf).
   const badgeEl = document.getElementById('txn-category-filter-badge');
-  if (txnCategoryFilter !== null) {
+  if (noCatMode) {
+    // Overschrijvingen en gesplitste transacties (die hebben op de hoofdrij ook geen categorie) vallen af.
+    data = (data || []).filter(t => !t.category_id && Number(t.amount) < 0 && t.link_type !== 'transfer' && t.link_type !== 'offset');
+    document.getElementById('txn-category-filter-name').textContent = txnCategoryFilterName;
+    badgeEl.style.display = 'block';
+  } else if (txnCategoryFilter !== null) {
     const { data: splitMatchRows } = await sb.from('transaction_splits').select('transaction_id').eq('category_id', txnCategoryFilter);
     // v3.32-bugfix: Supabase geeft bigint-kolommen als STRING terug (i.p.v. number), terwijl
     // txnCategoryFilter via Number() is gezet — een strikte === tussen die twee faalde dus altijd
@@ -3583,6 +3945,10 @@ async function loadTransactions() {
   const splitCounts = {};
   (splitCountRows || []).forEach(r => { splitCounts[r.transaction_id] = (splitCounts[r.transaction_id] || 0) + 1; });
 
+  if (noCatMode) {
+    data = data.filter(t => !splitCounts[t.id]);
+    if (data.length === 0) { el.innerHTML = '<div class="empty">Alle uitgaven hebben een categorie.</div>'; return; }
+  }
   let chronological = [...data].reverse(); // register-stijl: oud boven, nieuw onder
   if (mainSortDesc) chronological = chronological.reverse();
   const toRow = t => ({
@@ -3641,6 +4007,20 @@ function goToTransactionsForCategory(catId, monthDate) {
   txnCategoryFilterName = (catsById[catId] && catsById[catId].name) || '';
   updateTxnCategoryFilterButtonLabel();
   mainTxnViewMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  mainTxnSearch = '';
+  document.getElementById('main-txn-search').value = '';
+  mainUnclearedOnly = false;
+  transactionAccountFilter.clear();
+  document.querySelectorAll('.account-filter-cb').forEach(cb => cb.checked = false);
+  updateAccountFilterBadge();
+  document.querySelector('nav button[data-tab="transactions"]').click();
+  loadTransactions();
+}
+// v3.70: doorklik vanuit "Aandacht" naar alle uitgaven zonder categorie (ongeacht maand, t/m vandaag).
+function goToTransactionsWithoutCategory() {
+  txnCategoryFilter = 'none';
+  txnCategoryFilterName = 'Zonder categorie';
+  updateTxnCategoryFilterButtonLabel();
   mainTxnSearch = '';
   document.getElementById('main-txn-search').value = '';
   mainUnclearedOnly = false;
