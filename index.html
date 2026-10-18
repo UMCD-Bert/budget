@@ -1004,7 +1004,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.73';
+const APP_VERSION = 'v3.74';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -2124,6 +2124,8 @@ let dashCatById = {}, dashCatMonthTotals = {}, dashAllMonths = [];
 let dashCatType = 'expense'; // 'expense' | 'income'
 let dashCatMode = 'month'; // 'month' | 'average'
 let dashCatViewMonth = null; // 'YYYY-MM'
+// v3.74: uitkomsten van de laatste loadDashboard(), zodat de tests (en de native app via gemeenschappelijke testgegevens) ze kunnen vergelijken.
+let dashMonthlyIncome = {}, dashMonthlyExpense = {}, dashAgesPerMonth = [];
 let dashExpandedHoofdcat = new Set(); // meerdere tegelijk uitgeklapt mag, de rest blijft zichtbaar
 let dashExpandedSubcat = new Set();
 let dashSubcatTxnCache = {}; // cacheKey -> array van {id,date,payee,amount}, of 'loading'
@@ -2430,6 +2432,8 @@ async function loadDashboard() {
   dashCatById = catById;
   dashCatMonthTotals = catMonthTotals;
   dashAllMonths = months;
+  dashMonthlyIncome = monthlyIncome;
+  dashMonthlyExpense = monthlyExpense;
   if (!dashCatViewMonth) dashCatViewMonth = toLocalISODate(new Date()).slice(0, 7);
   renderDashCategorySection();
 
@@ -2546,11 +2550,12 @@ async function loadDashboard() {
     </svg>`;
   }
 
-  ageEl.innerHTML = renderMoneyAgeChart(months, months.map(m => {
+  dashAgesPerMonth = months.map(m => {
     const nextMonth = new Date(m + '-01T00:00:00');
     nextMonth.setMonth(nextMonth.getMonth() + 1);
     return computeAgeUpTo(toLocalISODate(nextMonth));
-  }));
+  });
+  ageEl.innerHTML = renderMoneyAgeChart(months, dashAgesPerMonth);
 
   saldoEl.innerHTML = renderMonthlySaldoChart(months, months.map(m => monthlyIncome[m] || 0), months.map(m => monthlyExpense[m] || 0));
 }

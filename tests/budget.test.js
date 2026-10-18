@@ -129,5 +129,26 @@ window.runBudgetTests = async function (w) {
   w.eval('invalidateLedger()'); // de rijen hierboven zijn rechtstreeks in de nagebootste database gezet
   await w.loadBudget();
   check('Alle transacties worden opgehaald, ook boven de 1000', g('budgetRaw').txns.length >= 2200, g('budgetRaw').txns.length);
+  // --- Dashboard: gemeenschappelijke testgegevens met de native app (golden/budget-golden.json) ---
+  // Staat als laatste: de database en de klok van het iframe worden hier vervangen door de gemeenschappelijke gegevens.
+  {
+    const gold = await (await fetch('golden/budget-golden.json?' + Date.now())).json();
+    const inv = gold.invoer, dv = gold.verwacht.dashboard;
+    window.installMockSupabase(g('sb'), { accounts: inv.rekeningen, categories: inv.categorieen, budget_months: inv.begroting, transactions: inv.transacties,
+      transaction_splits: inv.splitsingen, recurring_transactions: inv.herhalend, bank_transactions_staging: [] }, w);
+    w.eval(`(function () { const Echt = Date; const vast = new Echt('${inv.vandaag}T12:00:00').getTime();
+      window.Date = class extends Echt { constructor(...a) { if (a.length === 0) super(vast); else super(...a); } static now() { return vast; } }; })()`);
+    w.eval('invalidateLedger()');
+    await w.loadDashboard();
+    await w.updateMoneyAge();
+    const nu = w.eval('({ maanden: dashAllMonths, inkomsten: dashMonthlyIncome, uitgaven: dashMonthlyExpense, totals: dashCatMonthTotals, leeftijden: dashAgesPerMonth })');
+    const gelijkM = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].every(k => near(a[k] || 0, b[k] || 0));
+    check('Golden dashboard: maanden', JSON.stringify(nu.maanden) === JSON.stringify(dv.maanden), JSON.stringify(nu.maanden));
+    check('Golden dashboard: inkomsten en uitgaven per maand', gelijkM(nu.inkomsten, dv.inkomsten) && gelijkM(nu.uitgaven, dv.uitgaven));
+    check('Golden dashboard: totalen per categorie per maand', [...new Set([...Object.keys(nu.totals), ...Object.keys(dv.categorieTotalen)])].every(k => gelijkM(nu.totals[k] || {}, dv.categorieTotalen[k] || {})));
+    check('Golden dashboard: gemiddelde per categorie (incl. gespreid door de maand)', Object.keys(dv.gemiddelde).every(k => near(w.dashCategoryAverage(k), dv.gemiddelde[k])));
+    check('Golden dashboard: Geldleeftijd per maand en nu', JSON.stringify(nu.leeftijden) === JSON.stringify(dv.geldleeftijdPerMaand) && parseInt($('header-money-age').textContent) === dv.geldleeftijdNu, `${JSON.stringify(nu.leeftijden)} / ${$('header-money-age').textContent}`);
+  }
+
   return results;
 };
