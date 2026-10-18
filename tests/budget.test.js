@@ -12,6 +12,24 @@ window.runBudgetTests = async function (w) {
   const $ = id => w.document.getElementById(id);
   const dbAssigned = (cat, month) => w.__db.budget_months.filter(r => String(r.category_id) === String(cat) && r.month === month).map(r => Number(r.assigned));
 
+  // --- Gemeenschappelijke testgegevens met de native app (golden/budget-golden.json) ---
+  // Dezelfde invoer en verwachte uitkomst worden in BudgetKern (Swift) gecontroleerd; wijzigt de rekenregel hier,
+  // werk dan het bestand bij (zie tests/golden/README.md) en draai ook de Swift-tests.
+  {
+    const gold = await (await fetch('golden/budget-golden.json?' + Date.now())).json();
+    const inv = gold.invoer, verw = gold.verwacht;
+    const perId = {}; inv.transacties.forEach(t => { perId[t.id] = t; });
+    const eind = '2026-11-01';
+    const rawG = { cats: inv.categorieen, monthStr: inv.maand, startStr: inv.maand, endStr: eind, todayStr: inv.vandaag, budgetRows: inv.begroting, txns: inv.transacties,
+      splits: inv.splitsingen.map(sp => ({ ...sp, transactions: { date: perId[sp.transaction_id].date } })),
+      recurring: inv.herhalend.filter(r => r.active && r.next_date >= inv.maand && r.next_date < eind), accounts: inv.rekeningen, stagingCount: inv.teVerwerkenBankboekingen };
+    const mg = w.deriveBudgetModel(rawG);
+    const gelijkMap = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].every(k => near(a[k] || 0, b[k] || 0));
+    check('Golden: toegewezen, besteed en cumulatieven', gelijkMap(mg.assignedMap, verw.toegewezen) && gelijkMap(mg.cumAssignedMap, verw.cumulatiefToegewezen) && gelijkMap(mg.spentMap, verw.besteed) && gelijkMap(mg.cumSpentMap, verw.cumulatiefBesteed) && gelijkMap(mg.expectedMap, verw.verwacht));
+    check('Golden: Klaar om toe te wijzen, overschrijding en totaal saldo', near(mg.rta, verw.klaarOmToeTeWijzen) && near(mg.rtaBefore, verw.klaarVoorOverschrijding) && near(mg.overspend, verw.overschrijding) && near(mg.combinedTotal, verw.totaalSaldo), `${mg.rta} / ${verw.klaarOmToeTeWijzen}`);
+    check('Golden: tellers (zonder categorie, wacht op bank, te verwerken)', mg.noCategory === verw.zonderCategorie && mg.waiting === verw.wachtOpBank && mg.staging === verw.teVerwerken);
+  }
+
   // --- Basis: getallen kloppen met de database ---
   const m = g('budgetModel'), raw = g('budgetRaw');
   const prive = raw.accounts.filter(a => a.scope === 'prive');

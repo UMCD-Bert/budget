@@ -1,0 +1,900 @@
+{
+ "invoer": {
+  "vandaag": "2026-10-15",
+  "maand": "2026-10-01",
+  "teVerwerkenBankboekingen": 3,
+  "rekeningen": [
+   {
+    "id": 1,
+    "name": "Betaal",
+    "type": "checking",
+    "scope": "prive",
+    "bank": "asn",
+    "starting_balance": 1000.5,
+    "closed": false
+   },
+   {
+    "id": 2,
+    "name": "Spaar",
+    "type": "savings",
+    "scope": "prive",
+    "bank": "asn",
+    "starting_balance": 5000,
+    "closed": false
+   },
+   {
+    "id": 3,
+    "name": "Visa",
+    "type": "creditcard",
+    "scope": "prive",
+    "bank": "ics",
+    "starting_balance": -250.25,
+    "closed": false
+   },
+   {
+    "id": 4,
+    "name": "Zaak",
+    "type": "checking",
+    "scope": "zakelijk",
+    "bank": "abnamro",
+    "starting_balance": 300.1,
+    "closed": false
+   },
+   {
+    "id": 5,
+    "name": "Contant",
+    "type": "cash",
+    "scope": "prive",
+    "bank": null,
+    "starting_balance": 20,
+    "closed": false
+   }
+  ],
+  "categorieen": [
+   {
+    "id": 1,
+    "parent_id": null,
+    "name": "Vaste lasten",
+    "sort_order": 0,
+    "type": "expense",
+    "scope": "prive"
+   },
+   {
+    "id": 2,
+    "parent_id": 1,
+    "name": "Huur",
+    "sort_order": 0,
+    "type": null,
+    "scope": "prive"
+   },
+   {
+    "id": 3,
+    "parent_id": 1,
+    "name": "Verzekeringen",
+    "sort_order": 1,
+    "type": null,
+    "scope": "prive"
+   },
+   {
+    "id": 4,
+    "parent_id": 3,
+    "name": "Autoverzekering",
+    "sort_order": 0,
+    "type": null,
+    "scope": "prive"
+   },
+   {
+    "id": 5,
+    "parent_id": null,
+    "name": "Huishouden",
+    "sort_order": 1,
+    "type": "expense",
+    "scope": "prive"
+   },
+   {
+    "id": 6,
+    "parent_id": 5,
+    "name": "Boodschappen",
+    "sort_order": 0,
+    "type": null,
+    "scope": "prive"
+   },
+   {
+    "id": 7,
+    "parent_id": 5,
+    "name": "Drogisterij",
+    "sort_order": 1,
+    "type": null,
+    "scope": "prive"
+   },
+   {
+    "id": 8,
+    "parent_id": null,
+    "name": "Vrije tijd",
+    "sort_order": 2,
+    "type": "expense",
+    "scope": "prive"
+   },
+   {
+    "id": 9,
+    "parent_id": 8,
+    "name": "Hobby",
+    "sort_order": 0,
+    "type": null,
+    "scope": "prive"
+   },
+   {
+    "id": 10,
+    "parent_id": 8,
+    "name": "Uitgaan",
+    "sort_order": 1,
+    "type": null,
+    "scope": "prive"
+   },
+   {
+    "id": 11,
+    "parent_id": null,
+    "name": "Inkomen",
+    "sort_order": 3,
+    "type": "income",
+    "scope": "prive"
+   },
+   {
+    "id": 12,
+    "parent_id": 11,
+    "name": "Salaris",
+    "sort_order": 0,
+    "type": null,
+    "scope": "prive"
+   },
+   {
+    "id": 13,
+    "parent_id": 11,
+    "name": "Rente",
+    "sort_order": 1,
+    "type": null,
+    "scope": "prive"
+   },
+   {
+    "id": 14,
+    "parent_id": null,
+    "name": "Vakantie",
+    "sort_order": 4,
+    "type": "reservation",
+    "scope": "prive"
+   },
+   {
+    "id": 15,
+    "parent_id": 14,
+    "name": "Verblijf",
+    "sort_order": 0,
+    "type": null,
+    "scope": "prive"
+   },
+   {
+    "id": 16,
+    "parent_id": 14,
+    "name": "Voeding",
+    "sort_order": 1,
+    "type": null,
+    "scope": "prive"
+   },
+   {
+    "id": 17,
+    "parent_id": null,
+    "name": "Levensverzekering",
+    "sort_order": 5,
+    "type": "reservation",
+    "scope": "prive"
+   },
+   {
+    "id": 18,
+    "parent_id": null,
+    "name": "Omzet",
+    "sort_order": 0,
+    "type": "expense",
+    "scope": "zakelijk"
+   }
+  ],
+  "begroting": [
+   {
+    "id": 1,
+    "category_id": 2,
+    "month": "2026-08-01",
+    "assigned": 800
+   },
+   {
+    "id": 2,
+    "category_id": 6,
+    "month": "2026-08-01",
+    "assigned": 400
+   },
+   {
+    "id": 3,
+    "category_id": 12,
+    "month": "2026-08-01",
+    "assigned": 3000
+   },
+   {
+    "id": 4,
+    "category_id": 15,
+    "month": "2026-08-01",
+    "assigned": 200
+   },
+   {
+    "id": 5,
+    "category_id": 2,
+    "month": "2026-09-01",
+    "assigned": 800
+   },
+   {
+    "id": 6,
+    "category_id": 6,
+    "month": "2026-09-01",
+    "assigned": 400
+   },
+   {
+    "id": 7,
+    "category_id": 12,
+    "month": "2026-09-01",
+    "assigned": 3000
+   },
+   {
+    "id": 8,
+    "category_id": 15,
+    "month": "2026-09-01",
+    "assigned": 200
+   },
+   {
+    "id": 9,
+    "category_id": 2,
+    "month": "2026-10-01",
+    "assigned": 800
+   },
+   {
+    "id": 10,
+    "category_id": 6,
+    "month": "2026-10-01",
+    "assigned": 400
+   },
+   {
+    "id": 11,
+    "category_id": 12,
+    "month": "2026-10-01",
+    "assigned": 3000
+   },
+   {
+    "id": 12,
+    "category_id": 15,
+    "month": "2026-10-01",
+    "assigned": 200
+   },
+   {
+    "id": 13,
+    "category_id": 9,
+    "month": "2026-08-01",
+    "assigned": 100
+   },
+   {
+    "id": 14,
+    "category_id": 9,
+    "month": "2026-09-01",
+    "assigned": 100
+   },
+   {
+    "id": 15,
+    "category_id": 9,
+    "month": "2026-10-01",
+    "assigned": 150
+   },
+   {
+    "id": 16,
+    "category_id": 10,
+    "month": "2026-10-01",
+    "assigned": 150
+   },
+   {
+    "id": 17,
+    "category_id": 16,
+    "month": "2026-10-01",
+    "assigned": 0
+   },
+   {
+    "id": 18,
+    "category_id": 17,
+    "month": "2026-10-01",
+    "assigned": 25.5
+   },
+   {
+    "id": 19,
+    "category_id": 4,
+    "month": "2026-09-01",
+    "assigned": 66.75
+   },
+   {
+    "id": 20,
+    "category_id": 4,
+    "month": "2026-10-01",
+    "assigned": 66.75
+   },
+   {
+    "id": 21,
+    "category_id": 7,
+    "month": "2026-10-01",
+    "assigned": 30
+   },
+   {
+    "id": 22,
+    "category_id": 13,
+    "month": "2026-10-01",
+    "assigned": 10
+   },
+   {
+    "id": 23,
+    "category_id": 2,
+    "month": "2026-11-01",
+    "assigned": 800
+   }
+  ],
+  "transacties": [
+   {
+    "id": 1,
+    "account_id": 1,
+    "category_id": 12,
+    "payee": "Werkgever",
+    "amount": 3000,
+    "date": "2026-08-02",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 2,
+    "account_id": 1,
+    "category_id": 2,
+    "payee": "Verhuurder",
+    "amount": -800,
+    "date": "2026-08-01",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 3,
+    "account_id": 1,
+    "category_id": 6,
+    "payee": "Supermarkt",
+    "amount": -410.33,
+    "date": "2026-08-10",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 4,
+    "account_id": 1,
+    "category_id": 9,
+    "payee": "Hobbywinkel",
+    "amount": -310,
+    "date": "2026-08-15",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 5,
+    "account_id": 1,
+    "category_id": 12,
+    "payee": "Werkgever",
+    "amount": 3000,
+    "date": "2026-09-02",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 6,
+    "account_id": 1,
+    "category_id": 2,
+    "payee": "Verhuurder",
+    "amount": -800,
+    "date": "2026-09-01",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 7,
+    "account_id": 1,
+    "category_id": 6,
+    "payee": "Supermarkt",
+    "amount": -399.99,
+    "date": "2026-09-12",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 8,
+    "account_id": 1,
+    "category_id": 9,
+    "payee": "Hobbywinkel",
+    "amount": -90.1,
+    "date": "2026-09-18",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 9,
+    "account_id": 1,
+    "category_id": 4,
+    "payee": "Verzekeraar",
+    "amount": -66.75,
+    "date": "2026-09-05",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 10,
+    "account_id": 1,
+    "category_id": 15,
+    "payee": "Hotel",
+    "amount": -150,
+    "date": "2026-09-20",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 11,
+    "account_id": 1,
+    "category_id": 12,
+    "payee": "Werkgever",
+    "amount": 3000,
+    "date": "2026-10-02",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 12,
+    "account_id": 1,
+    "category_id": 2,
+    "payee": "Verhuurder",
+    "amount": -800,
+    "date": "2026-10-01",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 13,
+    "account_id": 1,
+    "category_id": 6,
+    "payee": "Supermarkt",
+    "amount": -64.35,
+    "date": "2026-10-03",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 14,
+    "account_id": 1,
+    "category_id": 6,
+    "payee": "Supermarkt",
+    "amount": -30,
+    "date": "2026-10-14",
+    "cleared": false,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 15,
+    "account_id": 1,
+    "category_id": 10,
+    "payee": "Café",
+    "amount": -27.5,
+    "date": "2026-10-09",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 16,
+    "account_id": 1,
+    "category_id": 9,
+    "payee": "Hobbywinkel",
+    "amount": -250,
+    "date": "2026-10-10",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 17,
+    "account_id": 1,
+    "category_id": null,
+    "payee": "Koers",
+    "amount": -180,
+    "date": "2026-10-11",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 18,
+    "account_id": 1,
+    "category_id": null,
+    "payee": "Koers",
+    "amount": 210,
+    "date": "2026-10-11",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 19,
+    "account_id": 1,
+    "category_id": null,
+    "payee": "Overschrijving",
+    "amount": -1000,
+    "date": "2026-10-12",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": 20,
+    "link_type": "transfer"
+   },
+   {
+    "id": 20,
+    "account_id": 2,
+    "category_id": null,
+    "payee": "Overschrijving",
+    "amount": 1000,
+    "date": "2026-10-12",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": 19,
+    "link_type": "transfer"
+   },
+   {
+    "id": 21,
+    "account_id": 1,
+    "category_id": null,
+    "payee": "Wegstrepen",
+    "amount": -50,
+    "date": "2026-10-13",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": 22,
+    "link_type": "offset"
+   },
+   {
+    "id": 22,
+    "account_id": 1,
+    "category_id": null,
+    "payee": "Wegstrepen",
+    "amount": 50,
+    "date": "2026-10-13",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": 21,
+    "link_type": "offset"
+   },
+   {
+    "id": 23,
+    "account_id": 1,
+    "category_id": null,
+    "payee": "Gesplitst",
+    "amount": -100,
+    "date": "2026-10-09",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 25,
+    "account_id": 1,
+    "category_id": null,
+    "payee": "CJIB",
+    "amount": -84,
+    "date": "2026-10-20",
+    "cleared": false,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 26,
+    "account_id": 1,
+    "category_id": 6,
+    "payee": "Supermarkt",
+    "amount": -12.5,
+    "date": "2026-10-25",
+    "cleared": false,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 27,
+    "account_id": 4,
+    "category_id": 18,
+    "payee": "Klant",
+    "amount": 500,
+    "date": "2026-10-05",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 28,
+    "account_id": 4,
+    "category_id": null,
+    "payee": "Bank",
+    "amount": -40,
+    "date": "2026-10-06",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 29,
+    "account_id": 5,
+    "category_id": 7,
+    "payee": "Drogist",
+    "amount": -10.97,
+    "date": "2026-10-08",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 30,
+    "account_id": 3,
+    "category_id": 10,
+    "payee": "Bioscoop",
+    "amount": -45.5,
+    "date": "2026-10-04",
+    "cleared": false,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 31,
+    "account_id": 1,
+    "category_id": null,
+    "payee": "Naar zaak",
+    "amount": -200,
+    "date": "2026-10-07",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": 32,
+    "link_type": "transfer"
+   },
+   {
+    "id": 32,
+    "account_id": 4,
+    "category_id": null,
+    "payee": "Van privé",
+    "amount": 200,
+    "date": "2026-10-07",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": 31,
+    "link_type": "transfer"
+   },
+   {
+    "id": 33,
+    "account_id": 1,
+    "category_id": 13,
+    "payee": "Bank",
+    "amount": 12.59,
+    "date": "2026-10-02",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 34,
+    "account_id": 1,
+    "category_id": 17,
+    "payee": "Verzekeraar",
+    "amount": -25.5,
+    "date": "2026-10-03",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 35,
+    "account_id": 1,
+    "category_id": 16,
+    "payee": "Restaurant",
+    "amount": -221.32,
+    "date": "2026-10-04",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 36,
+    "account_id": 1,
+    "category_id": 4,
+    "payee": "Verzekeraar",
+    "amount": -66.75,
+    "date": "2026-10-05",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 37,
+    "account_id": 1,
+    "category_id": 6,
+    "payee": "Supermarkt",
+    "amount": -5.55,
+    "date": "2026-10-15",
+    "cleared": true,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 38,
+    "account_id": 1,
+    "category_id": 6,
+    "payee": "Supermarkt",
+    "amount": -7.77,
+    "date": "2026-10-16",
+    "cleared": false,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   },
+   {
+    "id": 39,
+    "account_id": 1,
+    "category_id": null,
+    "payee": "Onbekend",
+    "amount": -35.35,
+    "date": "2026-10-12",
+    "cleared": false,
+    "notitie": null,
+    "linked_transaction_id": null,
+    "link_type": null
+   }
+  ],
+  "splitsingen": [
+   {
+    "id": 1,
+    "transaction_id": 23,
+    "category_id": 6,
+    "amount": -60,
+    "notitie": null
+   },
+   {
+    "id": 2,
+    "transaction_id": 23,
+    "category_id": 7,
+    "amount": -40,
+    "notitie": null
+   }
+  ],
+  "herhalend": [
+   {
+    "category_id": 2,
+    "amount": -800,
+    "next_date": "2026-10-28",
+    "active": true
+   },
+   {
+    "category_id": 10,
+    "amount": -95,
+    "next_date": "2026-11-03",
+    "active": true
+   },
+   {
+    "category_id": 4,
+    "amount": -66.75,
+    "next_date": "2026-10-30",
+    "active": true
+   }
+  ]
+ },
+ "verwacht": {
+  "toegewezen": {
+   "2": 800,
+   "4": 66.75,
+   "6": 400,
+   "7": 30,
+   "9": 150,
+   "10": 150,
+   "12": 3000,
+   "13": 10,
+   "15": 200,
+   "16": 0,
+   "17": 25.5
+  },
+  "cumulatiefToegewezen": {
+   "2": 2400,
+   "4": 133.5,
+   "6": 1200,
+   "7": 30,
+   "9": 350,
+   "10": 150,
+   "12": 9000,
+   "13": 10,
+   "15": 600,
+   "16": 0,
+   "17": 25.5
+  },
+  "besteed": {
+   "2": -800,
+   "4": -66.75,
+   "6": -180.17,
+   "7": -50.97,
+   "9": -250,
+   "10": -73,
+   "12": 3000,
+   "13": 12.59,
+   "16": -221.32,
+   "17": -25.5,
+   "18": 500
+  },
+  "cumulatiefBesteed": {
+   "2": -2400,
+   "4": -133.5,
+   "6": -990.49,
+   "7": -50.97,
+   "9": -650.1,
+   "10": -73,
+   "12": 9000,
+   "13": 12.59,
+   "15": -150,
+   "16": -221.32,
+   "17": -25.5,
+   "18": 500
+  },
+  "verwacht": {
+   "2": -800,
+   "4": -66.75
+  },
+  "klaarOmToeTeWijzen": 8346.1,
+  "klaarVoorOverschrijding": 8888.49,
+  "overschrijding": 542.39,
+  "totaalSaldo": 10862.98,
+  "zonderCategorie": 2,
+  "wachtOpBank": 3,
+  "teVerwerken": 3
+ }
+}
