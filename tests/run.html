@@ -9,6 +9,7 @@
 <script src="mock-supabase.js"></script>
 <script src="fixture.js"></script>
 <script src="budget.test.js"></script>
+<script src="inzichten.test.js"></script>
 <script>
 document.getElementById('app').addEventListener('load', async () => {
   const w = document.getElementById('app').contentWindow;
@@ -19,7 +20,7 @@ document.getElementById('app').addEventListener('load', async () => {
     w.eval('appInitialized = true');
     await w.initApp();
     await wait(1200);
-    const res = await window.runBudgetTests(w);
+    const res = (await window.runBudgetTests(w)).concat(window.runInzichtenTests(w));
     const fout = res.filter(r => !r.ok).length;
     document.getElementById('uitkomst').innerHTML = `<h2 class="${fout ? 'fail' : 'ok'}">${res.length - fout} van ${res.length} geslaagd</h2>` +
       res.map(r => `<div class="${r.ok ? 'ok' : 'fail'}">${r.ok ? '✓' : '✗'} ${r.naam}${r.ok ? '' : ' — ' + r.detail}</div>`).join('');

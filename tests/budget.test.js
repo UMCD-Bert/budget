@@ -122,6 +122,36 @@ window.runBudgetTests = async function (w) {
   const nieuw = await w.getLedger();
   check('Daarna bevat het kasboek de nieuwe transactie', nieuw.data.some(t => t.payee === 'cachetest' || (t.amount === -1 && t.category_id === 4)));
 
+  // --- Budgetkaart in het transactieformulier (v3.75) ---
+  {
+    await w.loadBudget();
+    const cardTekst = () => $('txn-detail-budget').style.display === 'none' ? '' : $('txn-detail-budget').innerText;
+    const setCat = async id => { const l = w.eval('txnDetailLeafOptions').find(x => Number(x.id) === id); $('txn-detail-category-search').value = l ? l.label : ''; await wait(700); };
+    await w.openTxnDetail(null);
+    $('txn-detail-amount').value = '20';
+    await setCat(4);
+    check('Budgetkaart: een uitgave binnen het budget toont "Past in het budget" met de categorie', cardTekst().includes('Boodschappen') && cardTekst().includes('Past in het budget'), cardTekst());
+    $('txn-detail-amount').value = '5000'; await wait(700);
+    check('Budgetkaart: een te grote uitgave wordt rood met tekort en dekking', cardTekst().includes('Rood') && (cardTekst().includes('Te dekken uit') || cardTekst().includes('Geen enkele')), cardTekst());
+    await setCat(null);
+    check('Budgetkaart: zonder categorie gaat het van Klaar om toe te wijzen af', cardTekst().includes('Klaar om toe te wijzen'), cardTekst());
+    click($('txn-detail-type-income'));
+    await setCat(9);
+    check('Budgetkaart: een inkomst toont wat er is ontvangen', cardTekst().includes('Inkomsten') && cardTekst().includes('Ontvangen'), cardTekst());
+    $('txn-detail-amount').value = ''; await wait(700);
+    check('Budgetkaart: zonder bedrag geen kaart', cardTekst() === '');
+    click($('txn-detail-close'));
+    await wait(700);
+    check('Budgetkaart: verdwijnt als het formulier dicht gaat', cardTekst() === '');
+    // Een bestaande transactie telt niet dubbel: ongewijzigd laat de kaart dezelfde stand zien als het Budget-scherm.
+    await w.openTxnDetail(3);
+    await wait(900);
+    const mm = g('budgetModel'), restBoodschappen = (mm.cumAssignedMap[4] || 0) + (mm.cumSpentMap[4] || 0);
+    check('Budgetkaart: een bestaande transactie wordt niet dubbel geteld', cardTekst().includes('→ ' + w.formatEuroWhole(restBoodschappen)), `${cardTekst()} / verwacht ${restBoodschappen}`);
+    click($('txn-detail-close'));
+    await wait(400);
+  }
+
   // --- Meer dan 1000 transacties (PostgREST-limiet) ---
   let id = 50000;
   for (let i = 0; i < 2200; i++) w.__db.transactions.push({ id: id++, account_id: 1, category_id: 4, payee: 'x', amount: -1, date: raw.monthStr.slice(0, 8) + '01', cleared: true, notitie: null, link_type: null, linked_transaction_id: null });

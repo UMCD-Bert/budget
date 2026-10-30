@@ -233,6 +233,35 @@
   .dash-cat-hoofd { border-left:4px solid #1b5e20; padding-left:8px; }
   .dash-cat-nested { margin-left:14px; border-left:2px solid var(--border); padding-left:8px; margin-bottom:6px; }
   #tab-dashboard .group { background:var(--card); border-radius:8px; padding:12px 14px; margin-bottom:14px; }
+  .bk-card { background:#f5f5f5; border-radius:8px; padding:8px 10px; margin-top:8px; font-size:13px; }
+  .bk-reg + .bk-reg { border-top:0.5px solid var(--border); margin-top:6px; padding-top:6px; }
+  .bk-head { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .bk-st { font-size:12px; font-weight:bold; }
+  .bk-st.ruim { color:var(--green); } .bk-st.bijna { color:#ef6c00; } .bk-st.rood { color:var(--red); }
+  .bk-bar { height:6px; background:#e0e0e0; border-radius:3px; margin:5px 0; overflow:hidden; }
+  .bk-fill { height:100%; border-radius:3px; } .bk-fill.ruim { background:var(--green); } .bk-fill.bijna { background:#ef6c00; } .bk-fill.rood { background:var(--red); }
+  .bk-txt { font-size:12px; color:#555; }
+  #tab-dashboard .dz-foot { font-size:12px; color:#6b6b6b; margin-top:8px; }
+  .dz-ok { padding:8px 0; font-size:14px; color:var(--green); }
+  .dz-note { display:flex; gap:10px; align-items:flex-start; padding:6px 0; font-size:14px; border-top:0.5px solid var(--border); }
+  .dz-note:first-of-type { border-top:none; }
+  .dz-ico { width:22px; flex-shrink:0; text-align:center; }
+  .dz-big { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; margin-bottom:6px; }
+  .dz-num { font-size:22px; font-weight:bold; }
+  .dz-num.neg, .neg { color:var(--red); }
+  .pos { color:var(--green); }
+  .dz-cap { font-size:12px; color:#6b6b6b; }
+  .dz-side { text-align:right; font-size:12px; color:#6b6b6b; }
+  .dz-line { display:flex; align-items:center; gap:8px; padding:3px 0; font-size:14px; }
+  .dz-grow { flex:1; min-width:0; }
+  .dz-item { padding:6px 0; border-top:0.5px solid var(--border); }
+  .dz-item:first-of-type { border-top:none; }
+  .dz-track { position:relative; height:8px; background:#e0e0e0; border-radius:4px; overflow:visible; margin:4px 0; }
+  .dz-fill { height:100%; border-radius:4px; }
+  .dz-mark { position:absolute; top:-2px; width:2px; height:12px; background:#222; opacity:.7; }
+  .dz-legend { display:flex; gap:14px; font-size:12px; color:#6b6b6b; margin:4px 0; }
+  .dz-legend i, .dz-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; }
+  .dz-donut { display:flex; align-items:center; gap:14px; }
   #tab-dashboard .group h3 { font-size:15px; font-weight:bold; color:#222; text-transform:none; letter-spacing:normal; }
   .select-toggle-btn { font-size:12px; color:var(--green); background:none; border:1px solid var(--green); border-radius:6px; padding:4px 10px; min-height:40px; cursor:pointer; touch-action:manipulation; }
   .select-toggle-btn.active { background:var(--green); color:#fff; }
@@ -548,6 +577,7 @@
   </div>
 
   <div id="tab-dashboard" style="display:none">
+    <div id="dash-inzichten"></div>
     <div class="group">
       <h3>Geldleeftijd per maand</h3>
       <div id="dash-money-age-list"><div class="empty">Nog geen gegevens.</div></div>
@@ -832,6 +862,7 @@
         <input type="number" step="0.01" id="txn-detail-amount" min="0">
       </div>
     </div>
+    <div id="txn-detail-budget" class="bk-card" style="display:none;"></div>
     <label>Naam</label>
     <input type="text" id="txn-detail-payee" list="payee-datalist">
     <label>Categorie</label>
@@ -1004,7 +1035,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.74';
+const APP_VERSION = 'v3.75';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -2558,6 +2589,561 @@ async function loadDashboard() {
   ageEl.innerHTML = renderMoneyAgeChart(months, dashAgesPerMonth);
 
   saldoEl.innerHTML = renderMonthlySaldoChart(months, months.map(m => monthlyIncome[m] || 0), months.map(m => monthlyExpense[m] || 0));
+  loadDashInzichten().catch(err => console.error(err));
+}
+
+// ---- Dashboard-inzichten (v3.75) ----
+// Dezelfde berekeningen als de native app (BudgetKern/InzichtenBerekening.swift), zodat web en app dezelfde antwoorden geven.
+// deriveDashInzichten(raw) is een zuivere functie (geen netwerk); loadDashInzichten haalt op en tekent.
+function dzAddMonths(monthStr, n) {
+  const m0 = Number(monthStr.slice(5, 7)) - 1 + n;
+  const y = Number(monthStr.slice(0, 4)) + Math.floor(m0 / 12);
+  return `${y}-${String(((m0 % 12) + 12) % 12 + 1).padStart(2, '0')}-01`;
+}
+function dzAddDays(iso, n) { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return toLocalISODate(d); }
+function dzDaysInMonth(iso) { return new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), 0).getDate(); }
+function dzShortDate(iso) { const d = new Date(iso + 'T12:00:00'); return d.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'long' }); }
+
+// Het budget van één maand (privé), op dezelfde manier uitgerekend als het Budget-scherm.
+function dzModel(raw, monthStr) {
+  return deriveBudgetModel({
+    cats: raw.priveCats, monthStr, startStr: monthStr, endStr: dzAddMonths(monthStr, 1), todayStr: raw.todayStr,
+    budgetRows: raw.budgetRows, txns: raw.txns, splits: raw.splitsMetDatum, recurring: [], accounts: raw.accounts, stagingCount: raw.stagingCount
+  });
+}
+function dzRuimte(model, id) {
+  const begroot = model.assignedMap[id] || 0, cumT = model.cumAssignedMap[id] || 0, cumB = model.cumSpentMap[id] || 0, deze = model.spentMap[id] || 0;
+  const beschikbaar = cumT + cumB - deze, resterend = cumT + cumB;
+  return { begroot, beschikbaar, uitgegeven: -deze, resterend, rood: Math.round(resterend) < 0 };
+}
+
+function deriveDashInzichten(raw) {
+  const today = raw.todayStr, curMonth = today.slice(0, 8) + '01', curKey = today.slice(0, 7);
+  const catsAll = {}; raw.cats.forEach(c => catsAll[c.id] = c);
+  raw.priveCats = raw.cats.filter(c => c.scope === 'prive');
+  const catsPrive = {}; raw.priveCats.forEach(c => catsPrive[c.id] = c);
+  const txnById = {}; raw.txns.forEach(t => txnById[t.id] = t);
+  raw.splitsMetDatum = raw.splits.filter(s => txnById[s.transaction_id]).map(s => ({ ...s, transactions: { date: txnById[s.transaction_id].date } }));
+  const priveIds = new Set(raw.accounts.filter(a => a.scope === 'prive').map(a => String(a.id)));
+  const zakIds = new Set(raw.accounts.filter(a => a.scope === 'zakelijk').map(a => String(a.id)));
+  const isTransfer = t => t.link_type === 'transfer' || t.link_type === 'offset';
+  const splitParents = new Set(raw.splits.map(s => String(s.transaction_id)));
+  const rootTypeP = id => rootTypeOfCategory(id, catsPrive);
+  const hasKids = new Set(raw.priveCats.filter(c => c.parent_id).map(c => String(c.parent_id)));
+  const leaves = raw.priveCats.filter(c => !hasKids.has(String(c.id)));
+  const leavesNonIncome = leaves.filter(c => rootTypeP(c.id) !== 'income');
+  const rootOf = id => { let n = catsPrive[id]; const seen = new Set(); while (n && n.parent_id && !seen.has(n.id)) { seen.add(n.id); n = catsPrive[n.parent_id]; } return n; };
+
+  // Boekingen: privé, geen overschrijving, gesplitste transacties per deel, t/m vandaag.
+  const boekingen = [];
+  raw.txns.forEach(t => {
+    if (!priveIds.has(String(t.account_id)) || isTransfer(t) || splitParents.has(String(t.id))) return;
+    boekingen.push({ cat: t.category_id, date: t.date, amount: Number(t.amount), payee: (t.payee || '').trim(), id: t.id });
+  });
+  raw.splits.forEach(s => {
+    const p = txnById[s.transaction_id];
+    if (!p || !priveIds.has(String(p.account_id)) || isTransfer(p)) return;
+    boekingen.push({ cat: s.category_id, date: p.date, amount: Number(s.amount), payee: (p.payee || '').trim(), id: p.id });
+  });
+  const bk = boekingen.filter(b => b.date <= today);
+  const monthKeyOf = d => d.slice(0, 7);
+
+  const model = dzModel(raw, curMonth);
+
+  // 1. Aandacht
+  let roodAantal = 0, roodSom = 0;
+  leavesNonIncome.forEach(c => { const r = dzRuimte(model, c.id); if (r.rood) { roodAantal++; roodSom += -r.resterend; } });
+  const sevenAgo = dzAddDays(today, -7);
+  const langOnbevestigd = raw.txns.filter(t => priveIds.has(String(t.account_id)) && !t.cleared && t.date <= sevenAgo).length;
+  const aandacht = { roodAantal, roodSom, zonderCategorie: model.noCategory, teVerwerken: raw.stagingCount, wachtOpBank: model.waiting, langOnbevestigd };
+  aandacht.isLeeg = !(roodAantal || aandacht.zonderCategorie || aandacht.teVerwerken || aandacht.wachtOpBank || langOnbevestigd);
+
+  // 2. Tempo (alleen categorieën die over de maand verspreid zijn)
+  const verstreken = Number(today.slice(8, 10)) / dzDaysInMonth(today);
+  let heeftGespreid = false;
+  let tempo = [];
+  leavesNonIncome.forEach(c => {
+    if (!c.spread_through_month) return;
+    heeftGespreid = true;
+    const r = dzRuimte(model, c.id);
+    if (!(r.beschikbaar > 0 || r.uitgegeven > 0)) return;
+    const verwacht = verstreken >= 0.15 ? r.uitgegeven / verstreken : null;
+    const status = r.rood ? 'rood' : (verwacht !== null ? (verwacht > r.beschikbaar ? 'teSnel' : 'opKoers') : 'teVroeg');
+    tempo.push({ id: c.id, naam: c.name, beschikbaar: r.beschikbaar, uitgegeven: r.uitgegeven, verwacht, status, verstreken });
+  });
+  const tRang = t => t.status === 'rood' ? 0 : t.status === 'teSnel' ? 1 : 2;
+  tempo.sort((a, b) => tRang(a) - tRang(b) || (tRang(a) === 1 ? ((b.verwacht || 0) - b.beschikbaar) - ((a.verwacht || 0) - a.beschikbaar) : b.uitgegeven - a.uitgegeven));
+  tempo = tempo.slice(0, 8);
+
+  // 3 + 8. Gewoonte en "Dit valt op"
+  const gewoonte = dzGewoonten(bk, catsPrive, rootTypeP, today);
+  const opvallend = dzOpvallend(bk, gewoonte, catsPrive, today);
+
+  // 4. Vooruitblik
+  const vooruitblik = dzVooruitblik(raw, priveIds, bk, today);
+
+  // 5. Vaste lasten
+  const vasteLasten = dzVasteLasten(raw, priveIds, catsPrive);
+
+  // 6. Doelen (reserveringen)
+  const recent3 = [0, 1, 2].map(n => dzAddMonths(curMonth, -n));
+  const doelen = [];
+  leaves.filter(c => rootTypeP(c.id) === 'reservation').forEach(c => {
+    const saldo = (model.cumAssignedMap[c.id] || 0) + (model.cumSpentMap[c.id] || 0);
+    const perMaand = raw.budgetRows.filter(r => String(r.category_id) === String(c.id) && recent3.includes(r.month)).reduce((s, r) => s + Number(r.assigned), 0) / 3;
+    const jaarGeleden = dzAddDays(today, -365);
+    const streef = bk.filter(b => String(b.cat) === String(c.id) && b.amount < 0 && b.date > jaarGeleden).reduce((s, b) => s - b.amount, 0);
+    if (saldo === 0 && perMaand === 0 && streef === 0) return;
+    let klaarOp = null;
+    if (streef > saldo && perMaand > 0) { const n = Math.ceil((streef - saldo) / perMaand); if (n <= 240) klaarOp = dzAddMonths(curMonth, n); }
+    doelen.push({ id: c.id, naam: c.name, saldo, perMaand, streef, klaarOp, voortgang: streef > 0 ? Math.min(1, Math.max(0, saldo / streef)) : null });
+  });
+  doelen.sort((a, b) => b.saldo - a.saldo);
+
+  // Maandtotalen (privé, t/m vandaag), per categorie-hoofdgroep
+  const ink = {}, uit = {};
+  bk.forEach(b => { const m = monthKeyOf(b.date); if (b.amount >= 0) ink[m] = (ink[m] || 0) + b.amount; else uit[m] = (uit[m] || 0) + b.amount; });
+  const maanden = [...new Set(bk.map(b => monthKeyOf(b.date)))].filter(m => m <= curKey).sort();
+
+  // 7. Verdeling per periode
+  const perioden = {
+    dezeMaand: [curKey],
+    ditJaar: Array.from({ length: Number(curKey.slice(5, 7)) }, (_, i) => `${curKey.slice(0, 4)}-${String(i + 1).padStart(2, '0')}`),
+    twaalfMaanden: Array.from({ length: 12 }, (_, i) => dzAddMonths(curMonth, -i).slice(0, 7))
+  };
+  const verdeling = {};
+  Object.keys(perioden).forEach(k => {
+    const set = new Set(perioden[k]);
+    const perRoot = {};
+    bk.forEach(b => {
+      if (!set.has(monthKeyOf(b.date))) return;
+      let sleutel, naam;
+      if (b.cat === null || b.cat === undefined) { if (b.amount >= 0) return; sleutel = 'null'; naam = 'Zonder categorie'; }
+      else { const root = rootOf(b.cat); if (!root || rootTypeP(root.id) === 'income') return; sleutel = String(root.id); naam = root.name; }
+      const e = perRoot[sleutel] || (perRoot[sleutel] = { naam, totaal: 0 });
+      e.totaal += b.amount;
+    });
+    const rijen = Object.values(perRoot).filter(r => r.totaal < -0.001).sort((a, b) => a.totaal - b.totaal || a.naam.localeCompare(b.naam));
+    const totaal = rijen.reduce((s, r) => s - r.totaal, 0);
+    const delen = rijen.slice(0, 5).map(r => ({ naam: r.naam, bedrag: -r.totaal, aandeel: totaal > 0 ? -r.totaal / totaal : 0 }));
+    const rest = rijen.slice(5).reduce((s, r) => s - r.totaal, 0);
+    if (rest > 0) delen.push({ naam: 'Overig', bedrag: rest, aandeel: totaal > 0 ? rest / totaal : 0 });
+    const perWinkel = {};
+    bk.forEach(b => {
+      if (b.amount >= 0 || !b.payee || !set.has(monthKeyOf(b.date))) return;
+      const key = b.payee.toLowerCase();
+      const e = perWinkel[key] || (perWinkel[key] = { naam: b.payee, bedrag: 0, ids: new Set() });
+      e.bedrag -= b.amount; e.ids.add(b.id);
+    });
+    const winkels = Object.values(perWinkel).map(e => ({ naam: e.naam, bedrag: e.bedrag, aantal: e.ids.size })).sort((a, b) => b.bedrag - a.bedrag || a.naam.localeCompare(b.naam)).slice(0, 5);
+    verdeling[k] = { totaal, delen, winkels };
+  });
+
+  // 9. Spaarquote
+  const alle = maanden.filter(m => m <= curKey);
+  const beeld = alle.slice(-12);
+  const quote = m => (ink[m] || 0) > 0 ? ((ink[m] || 0) + (uit[m] || 0)) / ink[m] : null;
+  const gewogen = lijst => {
+    const af = lijst.filter(m => m < curKey);
+    const i = af.reduce((s, m) => s + (ink[m] || 0), 0);
+    if (!(i > 0)) return null;
+    return af.reduce((s, m) => s + (ink[m] || 0) + (uit[m] || 0), 0) / i;
+  };
+  const voor = alle.slice(0, Math.max(0, alle.length - beeld.length)).slice(-12);
+  const spaarquote = { maanden: beeld.map(m => ({ maand: m, quote: quote(m), lopend: m === curKey })), gemiddelde: gewogen(beeld), vorigJaar: gewogen(voor) };
+
+  // 10. Begroot tegenover besteed (per maand, zonder inkomsten)
+  const eerste = maanden.length ? maanden[0] + '-01' : curMonth;
+  const begrootBesteed = [];
+  for (let n = 11; n >= 0; n--) {
+    const m = dzAddMonths(curMonth, -n);
+    if (m < eerste) continue;
+    const md = dzModel(raw, m);
+    let begroot = 0, besteed = 0, rood = 0;
+    leavesNonIncome.forEach(c => { begroot += md.assignedMap[c.id] || 0; besteed += -(md.spentMap[c.id] || 0); if (dzRuimte(md, c.id).rood) rood++; });
+    if (begroot === 0 && besteed === 0) continue;
+    begrootBesteed.push({ maand: m, begroot, besteed, roodAantal: rood, lopend: m === curMonth, overBudget: besteed > begroot });
+  }
+
+  // 11. Zakelijk resultaat
+  let zakelijk = null;
+  if (zakIds.size) {
+    const rijen = raw.txns.filter(t => zakIds.has(String(t.account_id)) && t.date <= today && !t.link_type);
+    if (!rijen.length) zakelijk = { maanden: [], ditJaar: 0, beste: null };
+    else {
+      const zi = {}, zu = {};
+      rijen.forEach(t => { const m = monthKeyOf(t.date), a = Number(t.amount); if (a >= 0) zi[m] = (zi[m] || 0) + a; else zu[m] = (zu[m] || 0) + a; });
+      const eersteZ = rijen.map(t => t.date).sort()[0].slice(0, 7) + '-01';
+      const zm = [];
+      for (let m = eersteZ > dzAddMonths(curMonth, -11) ? eersteZ : dzAddMonths(curMonth, -11); m <= curMonth; m = dzAddMonths(m, 1)) {
+        const k = m.slice(0, 7); zm.push({ maand: m, inkomsten: zi[k] || 0, uitgaven: zu[k] || 0, resultaat: (zi[k] || 0) + (zu[k] || 0) });
+      }
+      const ditJaar = rijen.filter(t => t.date.slice(0, 4) === today.slice(0, 4)).reduce((s, t) => s + Number(t.amount), 0);
+      let beste = null; zm.forEach(x => { if (!beste || x.resultaat > beste.resultaat) beste = x; });
+      zakelijk = { maanden: zm, ditJaar, beste };
+    }
+  }
+
+  // Saldo aan het einde van elke maand: privé, zakelijk, samen (voor de lijngrafiek bovenaan)
+  const startP = raw.accounts.filter(a => a.scope === 'prive').reduce((s, a) => s + Number(a.starting_balance), 0);
+  const startZ = raw.accounts.filter(a => a.scope === 'zakelijk').reduce((s, a) => s + Number(a.starting_balance), 0);
+  const perMaandP = {}, perMaandZ = {};
+  raw.txns.forEach(t => {
+    if (t.date > today) return;
+    const m = monthKeyOf(t.date), a = Number(t.amount);
+    if (priveIds.has(String(t.account_id))) perMaandP[m] = (perMaandP[m] || 0) + a;
+    else if (zakIds.has(String(t.account_id))) perMaandZ[m] = (perMaandZ[m] || 0) + a;
+  });
+  const saldoMaanden = [...new Set([...Object.keys(perMaandP), ...Object.keys(perMaandZ)])].sort();
+  const maandsaldi = [];
+  if (saldoMaanden.length) {
+    let p = startP, z = startZ;
+    for (let m = saldoMaanden[0] + '-01'; m.slice(0, 7) <= curKey; m = dzAddMonths(m, 1)) {
+      const k = m.slice(0, 7);
+      p += perMaandP[k] || 0; z += perMaandZ[k] || 0;
+      maandsaldi.push({ maand: k, prive: p, zakelijk: z, totaal: p + z });
+    }
+  }
+
+  return { aandacht, tempo, heeftGespreid, opvallend, gewoonte: gewoonte.slice(0, 6), vooruitblik, vasteLasten, doelen, verdeling, spaarquote, begrootBesteed, zakelijk, maandsaldi };
+}
+
+// Deze maand tot en met vandaag tegenover het gemiddelde van dezelfde dagen in de voorgaande maanden (maximaal 6, minstens 2).
+// Alleen wat je regelmatig uitgeeft (in minstens twee derde van die maanden), anders lijkt een jaarlijkse rekening elke keer "veel te hoog".
+function dzGewoonten(bk, catsPrive, rootTypeP, today) {
+  if (!bk.length) return [];
+  const curMonth = today.slice(0, 8) + '01';
+  const eerste = bk.map(b => b.date).sort()[0].slice(0, 7) + '-01';
+  const voorgaand = [];
+  for (let n = 1; n <= 6; n++) { const m = dzAddMonths(curMonth, -n); if (m >= eerste) voorgaand.push(m.slice(0, 7)); }
+  if (voorgaand.length < 2) return [];
+  const dag = Number(today.slice(8, 10)), curKey = today.slice(0, 7);
+  const nu = {}, eerder = {}, eerderMaanden = {};
+  bk.forEach(b => {
+    const c = b.cat;
+    if (c === null || c === undefined || !catsPrive[c] || rootTypeP(c) === 'income') return;
+    const m = b.date.slice(0, 7);
+    if (m === curKey) nu[c] = (nu[c] || 0) - b.amount;
+    else if (voorgaand.includes(m) && Number(b.date.slice(8, 10)) <= dag) { eerder[c] = (eerder[c] || 0) - b.amount; (eerderMaanden[c] = eerderMaanden[c] || new Set()).add(m); }
+  });
+  const n = voorgaand.length;
+  const uit = [];
+  new Set([...Object.keys(nu), ...Object.keys(eerder)]).forEach(c => {
+    const g = { id: c, naam: catsPrive[c].name, dezeMaand: nu[c] || 0, gemiddeld: (eerder[c] || 0) / n };
+    g.verschil = g.dezeMaand - g.gemiddeld;
+    const regelmatig = (eerderMaanden[c] ? eerderMaanden[c].size : 0) * 3 >= n * 2;
+    if (regelmatig && g.gemiddeld >= 20) uit.push(g);
+  });
+  return uit.sort((a, b) => Math.abs(b.verschil) - Math.abs(a.verschil) || a.naam.localeCompare(b.naam));
+}
+
+function dzOpvallend(bk, gewoonte, catsPrive, today) {
+  const letOp = [], nieuw = [], goed = [], info = [];
+  const curMonth = today.slice(0, 8) + '01', curKey = today.slice(0, 7), dag = Number(today.slice(8, 10));
+  if (dag >= 8) {
+    for (const g of gewoonte) {
+      if (g.gemiddeld > 0 && g.verschil >= 25 && g.dezeMaand >= g.gemiddeld * 1.25) {
+        letOp.push({ soort: 'letOp', tekst: `${g.naam} is ${Math.floor((g.dezeMaand / g.gemiddeld - 1) * 100 + 0.5)}% hoger dan je gemiddelde (${formatEuroWhole(g.dezeMaand)} tegenover ${formatEuroWhole(g.gemiddeld)})` });
+        if (letOp.length === 2) break;
+      }
+    }
+  }
+  if (dag >= 10) {
+    for (const g of [...gewoonte].reverse()) {
+      if (g.gemiddeld > 0 && g.verschil <= -25 && g.dezeMaand <= g.gemiddeld * 0.75) {
+        goed.push({ soort: 'goed', tekst: `${g.naam} ligt ${Math.floor((1 - g.dezeMaand / g.gemiddeld) * 100 + 0.5)}% onder je gemiddelde` });
+        break;
+      }
+    }
+  }
+  const perPayee = {};
+  bk.forEach(b => { if (b.amount < 0 && b.payee) (perPayee[b.payee.toLowerCase()] = perPayee[b.payee.toLowerCase()] || []).push(b); });
+  const nieuweNamen = [], wijzigingen = [];
+  const vijfenveertig = dzAddDays(today, -45);
+  Object.values(perPayee).forEach(lijst => {
+    lijst.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : Number(a.id) - Number(b.id));
+    const eerste = lijst[0];
+    if (eerste.date.slice(0, 7) === curKey) {
+      const som = lijst.reduce((s, b) => s - b.amount, 0);
+      if (som >= 25) nieuweNamen.push({ naam: eerste.payee, bedrag: som });
+    }
+    if (lijst.length >= 3) {
+      const n = lijst.length, laatste = -lijst[n - 1].amount, vorige = -lijst[n - 2].amount, daarvoor = -lijst[n - 3].amount;
+      if (lijst[n - 1].date >= vijfenveertig && Math.abs(vorige - daarvoor) < 0.01 && Math.abs(laatste - vorige) >= Math.max(0.5, vorige * 0.03)) {
+        wijzigingen.push({ tekst: `${lijst[n - 1].payee} ${laatste > vorige ? 'steeg' : 'daalde'} van ${formatEuro(vorige)} naar ${formatEuro(laatste)}`, grootte: Math.abs(laatste - vorige) });
+      }
+    }
+  });
+  wijzigingen.sort((a, b) => b.grootte - a.grootte).slice(0, 2).forEach(w => letOp.push({ soort: 'letOp', tekst: w.tekst }));
+  nieuweNamen.sort((a, b) => b.bedrag - a.bedrag).slice(0, 2).forEach(n => nieuw.push({ soort: 'nieuw', tekst: `Nieuwe naam: ${n.naam}, ${formatEuro(n.bedrag)}` }));
+  let groot = null;
+  bk.forEach(b => { if (b.amount < 0 && b.date.slice(0, 7) === curKey && (!groot || b.amount < groot.amount)) groot = b; });
+  if (groot && -groot.amount >= 100) {
+    const naam = groot.payee || ((groot.cat !== null && catsPrive[groot.cat]) ? catsPrive[groot.cat].name : 'een uitgave');
+    info.push({ soort: 'info', tekst: `Grootste uitgave deze maand: ${naam}, ${formatEuro(-groot.amount)}` });
+  }
+  return [...letOp, ...nieuw, ...goed, ...info].slice(0, 6);
+}
+
+function dzVooruitblik(raw, priveIds, bk, today, dagen = 90) {
+  if (!priveIds.size) return null;
+  const horizon = dzAddDays(today, dagen), morgen = dzAddDays(today, 1);
+  const start = raw.accounts.filter(a => a.scope === 'prive').reduce((s, a) => s + Number(a.starting_balance), 0)
+    + raw.txns.filter(t => priveIds.has(String(t.account_id)) && t.date <= today).reduce((s, t) => s + Number(t.amount), 0);
+  const events = {}, lijst = [];
+  raw.txns.forEach(t => {
+    if (!priveIds.has(String(t.account_id)) || t.date <= today || t.date > horizon) return;
+    events[t.date] = (events[t.date] || 0) + Number(t.amount);
+    lijst.push({ dag: t.date, naam: (t.payee || '').trim() || 'Zonder naam', bedrag: Number(t.amount) });
+  });
+  const vastePayees = new Set();
+  raw.recurring.forEach(r => {
+    if (r.active === false || !r.account_id || !priveIds.has(String(r.account_id))) return;
+    const naam = (r.payee || '').trim();
+    if (naam) vastePayees.add(naam.toLowerCase());
+    let d = r.next_date > morgen ? r.next_date : morgen, veilig = 0;
+    while (d <= horizon && veilig < 400) {
+      events[d] = (events[d] || 0) + Number(r.amount);
+      lijst.push({ dag: d, naam: naam || 'Zonder naam', bedrag: Number(r.amount) });
+      d = computeNextDate(d, r.frequency); veilig++;
+    }
+  });
+  // Gemiddeld dagelijks verbruik buiten de vaste posten (90 dagen). Inkomsten tellen alleen mee als ze herhalend zijn ingesteld.
+  const grens = dzAddDays(today, -90);
+  const gemiddeldPerDag = bk.filter(b => b.amount < 0 && b.date > grens && !vastePayees.has(b.payee.toLowerCase())).reduce((s, b) => s + b.amount, 0) / 90;
+  const punten = [];
+  let saldo = start;
+  for (let k = 1; k <= dagen; k++) { const d = dzAddDays(today, k); saldo += (events[d] || 0) + gemiddeldPerDag; punten.push({ dag: d, saldo }); }
+  let laagste = punten[0]; punten.forEach(p => { if (p.saldo < laagste.saldo) laagste = p; });
+  const veertien = dzAddDays(today, 14);
+  const komend = lijst.filter(b => b.dag <= veertien).sort((a, b) => a.dag < b.dag ? -1 : a.dag > b.dag ? 1 : a.bedrag - b.bedrag).slice(0, 8);
+  return { start, punten, laagste, komend, gemiddeldPerDag };
+}
+
+const DZ_PER_MAAND = { weekly: [52, 12], biweekly: [26, 12], '4weekly': [13, 12], monthly: [1, 1], '2monthly': [1, 2], '3monthly': [1, 3], yearly: [1, 12] };
+function dzVasteLasten(raw, priveIds, catsPrive) {
+  let lasten = 0, inkomsten = 0;
+  const posten = {};
+  raw.recurring.forEach(r => {
+    if (r.active === false || !r.account_id || !priveIds.has(String(r.account_id)) || !DZ_PER_MAAND[r.frequency]) return;
+    const [teller, noemer] = DZ_PER_MAAND[r.frequency];
+    const perMaand = Number(r.amount) * teller / noemer;
+    if (Number(r.amount) < 0) {
+      lasten += -perMaand;
+      const naam = (r.payee || '').trim() || ((r.category_id && catsPrive[r.category_id]) ? catsPrive[r.category_id].name : 'Zonder naam');
+      posten[naam] = (posten[naam] || 0) - perMaand;
+    } else inkomsten += perMaand;
+  });
+  const lijst = Object.keys(posten).map(naam => ({ naam, perMaand: posten[naam] })).sort((a, b) => b.perMaand - a.perMaand || a.naam.localeCompare(b.naam));
+  return { perMaand: lasten, perJaar: lasten * 12, posten: lijst.slice(0, 6), vasteInkomstenPerMaand: inkomsten, aandeel: inkomsten > 0 ? lasten / inkomsten : null };
+}
+
+// ---- Dashboard-inzichten: ophalen en tekenen ----
+let dashInzichtenRaw = null;
+async function loadDashInzichten() {
+  const box = document.getElementById('dash-inzichten');
+  if (!box) return;
+  const todayStr = toLocalISODate(new Date());
+  const [accRes, catRes, txnRes, splitRes, budRes, recRes, stRes] = await Promise.all([
+    sb.from('accounts').select('id, scope, starting_balance'),
+    sb.from('categories').select('id, parent_id, name, type, scope, spread_through_month'),
+    fetchAllRows(() => sb.from('transactions').select('id, account_id, category_id, payee, amount, date, cleared, link_type')),
+    fetchAllRows(() => sb.from('transaction_splits').select('id, transaction_id, category_id, amount')),
+    fetchAllRows(() => sb.from('budget_months').select('id, category_id, month, assigned')),
+    sb.from('recurring_transactions').select('account_id, category_id, payee, amount, frequency, next_date, active').eq('active', true),
+    sb.from('bank_transactions_staging').select('id, accounts!inner(scope)').eq('accounts.scope', 'prive').is('processed_at', null)
+  ]);
+  const fout = accRes.error || catRes.error || txnRes.error || splitRes.error || budRes.error || recRes.error;
+  if (fout) { console.error(fout); box.innerHTML = '<div class="group"><div class="empty">De inzichten konden niet worden opgehaald.</div></div>'; return; }
+  const raw = {
+    todayStr, accounts: accRes.data || [], cats: catRes.data || [], txns: txnRes.data || [], splits: splitRes.data || [], budgetRows: budRes.data || [],
+    recurring: recRes.data || [], stagingCount: (stRes && !stRes.error && stRes.data) ? stRes.data.length : 0
+  };
+  dashInzichtenRaw = raw;
+  renderDashInzichten(deriveDashInzichten(raw));
+}
+
+const DZ_COLORS = ['#1b5e20', '#1565c0', '#f9a825', '#6a1b9a', '#c62828', '#757575'];
+function dzW(el) { return Math.min(700, Math.max(280, Math.round(el.clientWidth) || 340)); }
+function dzPct(x) { return `${Math.round(x * 100)}%`; }
+function dzGroup(title, inner, footer) { return `<div class="group"><h3>${title}</h3>${inner}${footer ? `<div class="dz-foot">${footer}</div>` : ''}</div>`; }
+function dzBarsChart(items, w, h, valueKey, colorFn, fmtFn, avg) {
+  const padL = 8, padR = 8, padT = 22, padB = 22, plotW = w - padL - padR, plotH = h - padT - padB;
+  const vals = items.map(i => i[valueKey]);
+  const max = Math.max(...vals, 0.0001, avg || 0), min = Math.min(...vals, 0);
+  const span = max - min || 1, y = v => padT + plotH - ((v - min) / span) * plotH, zero = y(0);
+  const slot = plotW / items.length, bw = Math.max(6, slot * 0.6);
+  const idx = monthLabelIndices(items.map(i => i.maand.slice(0, 7)), w);
+  let s = `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;"><line x1="${padL}" y1="${zero}" x2="${w - padR}" y2="${zero}" stroke="#ccc"></line>`;
+  if (avg !== null && avg !== undefined) s += `<line x1="${padL}" y1="${y(avg)}" x2="${w - padR}" y2="${y(avg)}" stroke="#f9a825" stroke-dasharray="4,3"></line>`;
+  items.forEach((it, i) => {
+    const v = it[valueKey], cx = padL + i * slot + slot / 2, top = Math.min(y(v), zero), hh = Math.abs(y(v) - zero);
+    s += `<rect x="${cx - bw / 2}" y="${top}" width="${bw}" height="${Math.max(1, hh)}" fill="${colorFn(it)}" ${it.lopend ? 'opacity="0.5"' : ''}></rect>`;
+    if (idx.has(i)) s += `<text x="${cx}" y="${h - 6}" font-size="12" text-anchor="middle" fill="#6b6b6b">${formatMonthLabelNL(it.maand.slice(0, 7))}</text><text x="${cx}" y="${(v >= 0 ? top : top + hh) + (v >= 0 ? -4 : 12)}" font-size="11" text-anchor="middle" fill="#222">${fmtFn(v)}</text>`;
+  });
+  return s + '</svg>';
+}
+
+function renderDashInzichten(d) {
+  const box = document.getElementById('dash-inzichten');
+  const eur = formatEuroWhole;
+  const html = [];
+
+  // Aandacht
+  const a = d.aandacht, rows = [];
+  const attn = (kind, tekst) => `<button type="button" class="attn-row" data-dz-attn="${kind}"><span><span class="attn-dot"></span>${tekst}</span><span class="attn-go">›</span></button>`;
+  if (a.roodAantal) rows.push(attn('red', `${a.roodAantal} ${a.roodAantal === 1 ? 'categorie' : 'categorieën'} rood · -${eur(a.roodSom)}`));
+  if (a.zonderCategorie) rows.push(attn('nocat', `${a.zonderCategorie} ${a.zonderCategorie === 1 ? 'uitgave' : 'uitgaven'} zonder categorie`));
+  if (a.teVerwerken) rows.push(attn('staging', `${a.teVerwerken} ${a.teVerwerken === 1 ? 'bankboeking' : 'bankboekingen'} te verwerken`));
+  if (a.wachtOpBank) rows.push(attn('wait', `${a.wachtOpBank} ${a.wachtOpBank === 1 ? 'transactie wacht' : 'transacties wachten'} op de bank`));
+  if (a.langOnbevestigd) rows.push(attn('wait', `${a.langOnbevestigd} al meer dan een week onbevestigd`));
+  html.push(`<div class="attn-card" id="dz-aandacht"><div class="attn-title">Aandacht</div>${rows.length ? rows.join('') : '<div class="dz-ok">✓ Alles is bij: geen rode categorieën, niets zonder categorie, niets te verwerken.</div>'}</div>`);
+
+  // Dit valt op
+  if (d.opvallend.length) {
+    const ico = { letOp: '⚠️', nieuw: '✨', goed: '👍', info: 'ℹ️' };
+    html.push(dzGroup('Dit valt op', d.opvallend.map(o => `<div class="dz-note"><span class="dz-ico">${ico[o.soort]}</span><span>${escapeHtml(o.tekst)}</span></div>`).join('')));
+  }
+
+  // Saldo aan het einde van de maand
+  if (d.maandsaldi.length) {
+    const w = 340, h = 200, padL = 8, padR = 44, padT = 14, padB = 24;
+    const pts = d.maandsaldi.slice(-12), nu = pts[pts.length - 1];
+    const all = pts.flatMap(p => [p.prive, p.zakelijk, p.totaal]);
+    const max = Math.max(...all, 1), min = Math.min(...all, 0), span = max - min || 1;
+    const x = i => padL + (pts.length > 1 ? i * (w - padL - padR) / (pts.length - 1) : 0), y = v => padT + (h - padT - padB) * (1 - (v - min) / span);
+    const line = (key, color, wd) => `<polyline points="${pts.map((p, i) => `${x(i)},${y(p[key])}`).join(' ')}" fill="none" stroke="${color}" stroke-width="${wd}"></polyline>` + pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p[key])}" r="3" fill="${color}"></circle>`).join('');
+    const idx = monthLabelIndices(pts.map(p => p.maand), w);
+    const compact = v => Math.abs(v) >= 1000 ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : 1).replace('.', ',') + 'k' : String(Math.round(v));
+    const svg = `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;">
+      <line x1="${padL}" y1="${y(0)}" x2="${w - padR}" y2="${y(0)}" stroke="#ccc"></line>
+      <text x="${w - 2}" y="${y(max) + 4}" font-size="11" text-anchor="end" fill="#6b6b6b">${compact(max)}</text><text x="${w - 2}" y="${y(min) + 4}" font-size="11" text-anchor="end" fill="#6b6b6b">${compact(min)}</text>
+      ${line('zakelijk', '#1565c0', 2)}${line('prive', '#43a047', 2)}${line('totaal', '#222', 3)}
+      ${pts.map((p, i) => idx.has(i) ? `<text x="${x(i)}" y="${h - 6}" font-size="12" text-anchor="${i === 0 ? 'start' : i === pts.length - 1 ? 'end' : 'middle'}" fill="#6b6b6b">${formatMonthLabelNL(p.maand)}</text>` : '').join('')}</svg>`;
+    html.push(dzGroup('Saldo aan het einde van de maand', `<div class="dz-big"><div><div class="dz-cap">Totaal saldo nu</div><div class="dz-num">${eur(nu.totaal)}</div></div><div class="dz-side">Privé ${eur(nu.prive)}<br>Zakelijk ${eur(nu.zakelijk)}</div></div>${svg}
+      <div class="dz-legend"><span><i style="background:#43a047"></i>Privé</span><span><i style="background:#1565c0"></i>Zakelijk</span><span><i style="background:#222"></i>Samen</span></div>`));
+  }
+
+  // Vooruitblik
+  const v = d.vooruitblik;
+  if (v) {
+    const w = 340, h = 150, padL = 8, padR = 40, padT = 10, padB = 20;
+    const all = v.punten.map(p => p.saldo), max = Math.max(...all, 0), min = Math.min(...all, 0), span = max - min || 1;
+    const x = i => padL + i * (w - padL - padR) / (v.punten.length - 1), y = val => padT + (h - padT - padB) * (1 - (val - min) / span);
+    const krap = v.laagste.saldo < 0, li = v.punten.indexOf(v.laagste);
+    const compact = val => Math.abs(val) >= 1000 ? (val / 1000).toFixed(1).replace('.', ',') + 'k' : String(Math.round(val));
+    const area = `${x(0)},${y(0)} ` + v.punten.map((p, i) => `${x(i)},${y(p.saldo)}`).join(' ') + ` ${x(v.punten.length - 1)},${y(0)}`;
+    const svg = `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;"><polygon points="${area}" fill="rgba(67,160,71,0.15)"></polygon>
+      <line x1="${padL}" y1="${y(0)}" x2="${w - padR}" y2="${y(0)}" stroke="#999" stroke-dasharray="4,3"></line>
+      <polyline points="${v.punten.map((p, i) => `${x(i)},${y(p.saldo)}`).join(' ')}" fill="none" stroke="#43a047" stroke-width="2"></polyline>
+      <circle cx="${x(li)}" cy="${y(v.laagste.saldo)}" r="5" fill="${krap ? '#c62828' : '#f9a825'}"></circle>
+      <text x="${w - 2}" y="${y(max) + 4}" font-size="11" text-anchor="end" fill="#6b6b6b">${compact(max)}</text><text x="${w - 2}" y="${y(min) + 4}" font-size="11" text-anchor="end" fill="#6b6b6b">${compact(min)}</text>
+      <text x="${padL}" y="${h - 4}" font-size="12" fill="#6b6b6b">${formatDateNL(v.punten[0].dag)}</text><text x="${w - padR}" y="${h - 4}" font-size="12" text-anchor="end" fill="#6b6b6b">${formatDateNL(v.punten[v.punten.length - 1].dag)}</text></svg>`;
+    html.push(dzGroup('Vooruitblik: 90 dagen', `<div class="dz-cap">Laagste punt komende 90 dagen</div><div class="dz-num ${krap ? 'neg' : ''}">${eur(v.laagste.saldo)}</div><div class="dz-cap">rond ${dzShortDate(v.laagste.dag)}</div>${svg}
+      ${v.komend.map(b => `<div class="dz-line"><span class="dz-cap" style="width:110px">${dzShortDate(b.dag)}</span><span class="dz-grow">${escapeHtml(b.naam)}</span><span class="${b.bedrag < 0 ? 'neg' : 'pos'}">${formatEuro(b.bedrag)}</span></div>`).join('')}`,
+      `Op basis van je saldo van privé, geplande en herhalende betalingen, en gemiddeld ${formatEuro(-v.gemiddeldPerDag)} per dag aan overige uitgaven.`));
+  }
+
+  // Tempo
+  if (d.tempo.length) {
+    const kleur = t => t.status === 'rood' ? '#c62828' : t.status === 'teSnel' ? '#ef6c00' : t.status === 'opKoers' ? '#2e7d32' : '#9e9e9e';
+    const lab = t => ({ rood: 'Op', teSnel: 'Te snel', opKoers: 'Op koers', teVroeg: 'Nog vroeg' })[t.status];
+    html.push(dzGroup('Tempo van de maand', d.tempo.map(t => {
+      const deel = t.beschikbaar > 0 ? Math.min(1, Math.max(0, t.uitgegeven / t.beschikbaar)) : 1;
+      return `<div class="dz-item"><div class="dz-line"><span class="dz-grow">${escapeHtml(t.naam)}</span><b style="color:${kleur(t)}">${lab(t)}</b></div>
+        <div class="dz-track"><div class="dz-fill" style="width:${Math.max(1, deel * 100)}%; background:${kleur(t)}"></div><div class="dz-mark" style="left:${t.verstreken * 100}%"></div></div>
+        <div class="dz-line dz-cap"><span class="dz-grow">${eur(t.uitgegeven)} van ${eur(t.beschikbaar)}</span>${t.verwacht !== null ? `<span>op dit tempo ${eur(t.verwacht)}</span>` : ''}</div></div>`;
+    }).join(''), 'Alleen categorieën die je hebt ingesteld als verspreid over de maand. Het streepje is waar je nu in de maand bent.'));
+  }
+
+  // Verdeling (met periodekeuze)
+  html.push(`<div class="group" id="dz-verdeling"><h3>Waar gaat het geld heen</h3><div class="amount-type-toggle" style="margin:0 0 8px;" id="dz-verdeling-keuze">
+    <button type="button" data-p="dezeMaand" class="active-expense">Deze maand</button><button type="button" data-p="ditJaar">Dit jaar</button><button type="button" data-p="twaalfMaanden">12 maanden</button></div><div id="dz-verdeling-body"></div></div>`);
+
+  // Gewoonte
+  if (d.gewoonte.length) {
+    html.push(dzGroup('Vergeleken met je gewoonte', d.gewoonte.map(g => {
+      const grootste = Math.max(g.dezeMaand, g.gemiddeld, 1), kl = g.verschil > 0 ? '#ef6c00' : '#2e7d32';
+      const bar = (lab, val, color) => `<div class="dz-line dz-cap"><span style="width:70px">${lab}</span><span class="dz-track dz-grow" style="height:6px"><span class="dz-fill" style="display:block;width:${Math.max(1, val / grootste * 100)}%; background:${color}"></span></span><span style="width:64px; text-align:right">${eur(val)}</span></div>`;
+      return `<div class="dz-item"><div class="dz-line"><span class="dz-grow">${escapeHtml(g.naam)}</span><b style="color:${kl}">${g.verschil >= 0 ? '+' : '−'}${eur(Math.abs(g.verschil))}</b></div>${bar('Nu', g.dezeMaand, kl)}${bar('Gemiddeld', g.gemiddeld, '#9e9e9e')}</div>`;
+    }).join(''), 'Deze maand tot en met vandaag, tegenover het gemiddelde van dezelfde dagen in de voorgaande maanden.'));
+  }
+
+  // Vaste lasten
+  const vl = d.vasteLasten;
+  if (vl.perMaand > 0) {
+    html.push(dzGroup('Vaste lasten', `<div class="dz-big"><div><div class="dz-cap">Per maand</div><div class="dz-num">${eur(vl.perMaand)}</div></div><div class="dz-side"><span class="dz-cap">Per jaar</span><br><b>${eur(vl.perJaar)}</b></div></div>
+      ${vl.aandeel !== null ? `<div class="dz-track"><div class="dz-fill" style="width:${Math.min(100, vl.aandeel * 100)}%; background:${vl.aandeel > 0.7 ? '#ef6c00' : '#1b5e20'}"></div></div><div class="dz-cap">${dzPct(vl.aandeel)} van je vaste inkomsten (${eur(vl.vasteInkomstenPerMaand)} per maand) gaat naar vaste lasten</div>` : ''}
+      ${vl.posten.map(p => `<div class="dz-line"><span class="dz-grow">${escapeHtml(p.naam)}</span><span class="dz-cap">${eur(p.perMaand)} p/m</span></div>`).join('')}`, 'Uit je herhalende transacties, omgerekend naar een maand.'));
+  }
+
+  // Doelen
+  if (d.doelen.length) {
+    html.push(dzGroup('Reserveringen en doelen', d.doelen.map(g => `<div class="dz-item"><div class="dz-line"><span class="dz-grow">${escapeHtml(g.naam)}</span><b class="${g.saldo < 0 ? 'neg' : ''}">${eur(g.saldo)}</b></div>
+      ${g.voortgang !== null ? `<div class="dz-track"><div class="dz-fill" style="width:${Math.max(1, g.voortgang * 100)}%; background:${g.voortgang >= 1 ? '#2e7d32' : '#1b5e20'}"></div></div>` : ''}
+      <div class="dz-line dz-cap"><span class="dz-grow">${g.streef > 0 ? `Vorig jaar uitgegeven: ${eur(g.streef)}` : ''}</span>${g.perMaand > 0 ? `<span>+${eur(g.perMaand)} p/m</span>` : ''}</div>
+      ${g.klaarOp ? `<div class="dz-cap">Op dit tempo ben je er rond ${new Date(g.klaarOp + 'T12:00:00').toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })}</div>` : ''}</div>`).join(''),
+      'Het streefbedrag is wat je het afgelopen jaar uit deze reservering hebt uitgegeven; het tempo is het gemiddelde van de laatste drie maanden.'));
+  }
+
+  // Spaarquote
+  const sq = d.spaarquote;
+  if (sq.maanden.filter(m => m.quote !== null).length >= 2) {
+    const items = sq.maanden.filter(m => m.quote !== null).map(m => ({ maand: m.maand, waarde: m.quote * 100, lopend: m.lopend }));
+    html.push(dzGroup('Spaarquote', `<div class="dz-big"><div><div class="dz-cap">Gemiddeld laatste ${sq.maanden.length} maanden</div><div class="dz-num">${sq.gemiddelde !== null ? dzPct(sq.gemiddelde) : '–'}</div></div>${sq.vorigJaar !== null ? `<div class="dz-side"><span class="dz-cap">Daarvoor</span><br><b>${dzPct(sq.vorigJaar)}</b></div>` : ''}</div>
+      <div id="dz-spaar-chart">${dzBarsChart(items, 340, 170, 'waarde', i => i.waarde >= 0 ? '#43a047' : '#c62828', x => Math.round(x) + '%', sq.gemiddelde !== null ? sq.gemiddelde * 100 : null)}</div>`,
+      'Het deel van je inkomen dat je overhoudt. De lopende maand is lichter getekend en telt niet mee in het gemiddelde.'));
+  }
+
+  // Begroot tegenover besteed
+  if (d.begrootBesteed.length >= 2) {
+    const bb = d.begrootBesteed, w = 340, h = 180, padB = 22, padT = 10, plotH = h - padT - padB;
+    const max = Math.max(...bb.flatMap(r => [r.begroot, r.besteed]), 1), slot = (w - 16) / bb.length, bw = Math.max(5, slot * 0.34), idx = monthLabelIndices(bb.map(r => r.maand.slice(0, 7)), w);
+    const svg = `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;"><line x1="8" y1="${padT + plotH}" x2="${w - 8}" y2="${padT + plotH}" stroke="#ccc"></line>` + bb.map((r, i) => {
+      const cx = 8 + i * slot + slot / 2, hb = r.begroot / max * plotH, hs = Math.max(0, r.besteed) / max * plotH;
+      return `<rect x="${cx - bw - 1}" y="${padT + plotH - hb}" width="${bw}" height="${hb}" fill="#c9c9c9"></rect><rect x="${cx + 1}" y="${padT + plotH - hs}" width="${bw}" height="${hs}" fill="${r.overBudget ? '#c62828' : '#1b5e20'}"></rect>`
+        + (idx.has(i) ? `<text x="${cx}" y="${h - 6}" font-size="12" text-anchor="middle" fill="#6b6b6b">${formatMonthLabelNL(r.maand.slice(0, 7))}</text>` : '');
+    }).join('') + '</svg>';
+    html.push(dzGroup('Begroot tegenover besteed', `${svg}<div class="dz-legend"><span><i style="background:#c9c9c9"></i>Begroot</span><span><i style="background:#1b5e20"></i>Besteed</span></div>` +
+      [...bb].reverse().map(r => `<div class="dz-line"><span class="dz-cap" style="width:60px">${formatMonthLabelNL(r.maand.slice(0, 7)).toUpperCase()}</span><span class="dz-grow">${eur(r.besteed)} van ${eur(r.begroot)}</span>${r.roodAantal ? `<b class="neg">${r.roodAantal} rood</b>` : (!r.lopend ? '<span class="pos">✓</span>' : '')}</div>`).join(''),
+      'Zonder inkomsten. Een maand kan binnen het totaal blijven en toch categorieën rood hebben.'));
+  }
+
+  // Zakelijk
+  if (d.zakelijk && d.zakelijk.maanden.length) {
+    const z = d.zakelijk, items = z.maanden.map(m => ({ maand: m.maand, waarde: m.resultaat }));
+    html.push(dzGroup('Zakelijk resultaat', `<div class="dz-big"><div><div class="dz-cap">Resultaat dit jaar</div><div class="dz-num ${z.ditJaar < 0 ? 'neg' : ''}">${eur(z.ditJaar)}</div></div>${z.beste && z.beste.resultaat > 0 ? `<div class="dz-side"><span class="dz-cap">Beste maand</span><br><b>${formatMonthLabelNL(z.beste.maand.slice(0, 7)).toUpperCase()} ${eur(z.beste.resultaat)}</b></div>` : ''}</div>
+      ${dzBarsChart(items, 340, 150, 'waarde', i => i.waarde >= 0 ? '#1565c0' : '#c62828', x => String(Math.round(x)), null)}`, 'Ontvangen min uitgegeven op je zakelijke rekeningen, zonder overboekingen met privé.'));
+  }
+
+  box.innerHTML = html.join('');
+  const sel = document.getElementById('dz-verdeling-keuze');
+  const toon = (p) => {
+    const vd = d.verdeling[p];
+    sel.querySelectorAll('button').forEach(b => b.classList.toggle('active-expense', b.dataset.p === p));
+    const body = document.getElementById('dz-verdeling-body');
+    if (!vd || vd.totaal <= 0) { body.innerHTML = '<div class="empty">Nog geen uitgaven in deze periode.</div>'; return; }
+    let hoek = -Math.PI / 2;
+    const R = 52, r = 32, arcs = vd.delen.map((dl, i) => {
+      const a1 = hoek, a2 = hoek + dl.aandeel * 2 * Math.PI; hoek = a2;
+      const p = (rad, a) => `${60 + rad * Math.cos(a)},${60 + rad * Math.sin(a)}`, groot = a2 - a1 > Math.PI ? 1 : 0;
+      if (dl.aandeel >= 0.9999) return `<circle cx="60" cy="60" r="${(R + r) / 2}" fill="none" stroke="${DZ_COLORS[i % 6]}" stroke-width="${R - r}"></circle>`;
+      return `<path d="M${p(R, a1)} A${R},${R} 0 ${groot} 1 ${p(R, a2)} L${p(r, a2)} A${r},${r} 0 ${groot} 0 ${p(r, a1)} Z" fill="${DZ_COLORS[i % 6]}" stroke="#fff" stroke-width="1"></path>`;
+    }).join('');
+    body.innerHTML = `<div class="dz-donut"><svg viewBox="0 0 120 120" width="120" height="120">${arcs}<text x="60" y="56" font-size="9" text-anchor="middle" fill="#6b6b6b">Totaal</text><text x="60" y="70" font-size="12" font-weight="bold" text-anchor="middle">${eur(vd.totaal)}</text></svg>
+      <div class="dz-grow">${vd.delen.map((dl, i) => `<div class="dz-line"><span><i class="dz-dot" style="background:${DZ_COLORS[i % 6]}"></i>${escapeHtml(dl.naam)}</span><span class="dz-cap">${dzPct(dl.aandeel)}</span></div>`).join('')}</div></div>
+      ${vd.winkels.length ? `<div class="dz-cap" style="margin-top:8px">Waar het meeste naartoe ging</div>${vd.winkels.map(wk => `<div class="dz-line"><span class="dz-grow">${escapeHtml(wk.naam)} <span class="dz-cap">${wk.aantal}×</span></span><b>${eur(wk.bedrag)}</b></div>`).join('')}` : ''}`;
+  };
+  sel.onclick = e => { const b = e.target.closest('button[data-p]'); if (b) toon(b.dataset.p); };
+  toon('dezeMaand');
+  box.onclick = e => {
+    const t = e.target.closest('[data-dz-attn]');
+    if (!t) return;
+    const kind = t.dataset.dzAttn;
+    if (kind === 'red') document.querySelector('nav button[data-tab="budget"]').click();
+    else if (kind === 'nocat') goToTransactionsWithoutCategory();
+    else document.querySelector('nav button[data-tab="transactions"]').click();
+  };
 }
 
 function bankSelectOptions(selected) {
@@ -4447,6 +5033,119 @@ function wirePhotoDeleteButtons(container) {
   });
 }
 
+// ---- Budgetkaart in het transactieformulier (v3.75) ----
+// Laat zien wat de transactie met het budget doet voordat je bewaart: hoeveel er in de categorie overblijft, of hij bijna op of rood wordt (met
+// de ruimste dekking), en wat er met Klaar om toe te wijzen gebeurt. Dezelfde regels als de native app (BudgetEffectBerekening.swift): het
+// budget wordt twee keer uitgerekend, zonder en met deze transactie.
+function computeTxnBudgetEffect() {
+  const raw = budgetRaw;
+  if (!raw) return null;
+  const accountId = document.getElementById('txn-detail-account').value;
+  const account = raw.accounts.find(a => String(a.id) === String(accountId));
+  if (!account || account.scope !== 'prive') return null;
+  const rawAmount = parseFloat(document.getElementById('txn-detail-amount').value);
+  if (isNaN(rawAmount) || rawAmount === 0) return null;
+  const sign = getAmountType('txn-detail') === 'income' ? 1 : -1;
+  const amount = sign * Math.abs(rawAmount);
+  const date = document.getElementById('txn-detail-date').value;
+  if (!date) return null;
+  let catId = null, parts = null;
+  if (splitMode) {
+    if (splitRows.length < 2 || splitRows.some(r => isNaN(r.amount) || r.amount <= 0) || Math.abs(updateSplitRemaining()) >= 0.005) return null;
+    parts = splitRows.map(r => ({ category_id: r.category_id, amount: sign * Math.abs(r.amount) }));
+  } else {
+    const label = document.getElementById('txn-detail-category-search').value.trim();
+    if (label) { if (!txnDetailCatLabelToId[label]) return null; catId = txnDetailCatLabelToId[label]; }
+  }
+  const monthStr = date.slice(0, 7) + '-01', endStr = dzAddMonths(monthStr, 1);
+  const eigen = String(currentTxnId);
+  const basis = {
+    ...raw, monthStr, startStr: monthStr, endStr,
+    txns: raw.txns.filter(t => String(t.id) !== eigen),
+    splits: raw.splits.filter(s => String(s.transaction_id) !== eigen),
+    recurring: raw.monthStr === monthStr ? raw.recurring : []
+  };
+  const nieuw = { id: '__nieuw', account_id: Number.isNaN(Number(accountId)) ? accountId : Number(accountId), category_id: parts ? null : catId, amount, date, cleared: true, link_type: null };
+  const met = { ...basis, txns: basis.txns.concat([nieuw]), splits: basis.splits.concat((parts || []).map(p => ({ transaction_id: '__nieuw', category_id: p.category_id, amount: p.amount, transactions: { date } }))) };
+  const voor = deriveBudgetModel(basis), na = deriveBudgetModel(met);
+  const ids = parts ? [...new Set(parts.map(p => p.category_id).filter(Boolean))] : (catId ? [catId] : []);
+  const hasKids = new Set(raw.cats.filter(c => c.parent_id).map(c => String(c.parent_id)));
+  const regels = [];
+  ids.forEach(id => {
+    const c = catsById[id];
+    if (!c) return;
+    const income = rootTypeOfCategory(id, catsById) === 'income';
+    const rv = dzRuimte(voor, id), rn = dzRuimte(na, id);
+    const tekort = income ? 0 : Math.max(0, Math.ceil(-rn.resterend - 0.0001));
+    let dekking = [];
+    if (tekort > 0) {
+      if (voor.rta >= tekort) dekking.push({ naam: 'Klaar om toe te wijzen', beschikbaar: voor.rta });
+      raw.cats.forEach(o => {
+        if (hasKids.has(String(o.id)) || String(o.id) === String(id) || rootTypeOfCategory(o.id, catsById) === 'income') return;
+        const r = (voor.cumAssignedMap[o.id] || 0) + (voor.cumSpentMap[o.id] || 0);
+        if (r >= tekort) dekking.push({ naam: o.name, beschikbaar: r });
+      });
+      dekking.sort((a, b) => b.beschikbaar - a.beschikbaar);
+    }
+    regels.push({ id, naam: c.name, income, voor: rv, na: rn, begroot: voor.assignedMap[id] || 0, ontvangenVoor: voor.spentMap[id] || 0, ontvangenNa: na.spentMap[id] || 0,
+      dezeBoeking: income ? (na.spentMap[id] || 0) - (voor.spentMap[id] || 0) : -((na.spentMap[id] || 0) - (voor.spentMap[id] || 0)), tekort, dekking: dekking.slice(0, 3) });
+  });
+  return { monthStr, regels, klaarVoor: voor.rta, klaarNa: na.rta, toekomst: date > raw.todayStr, zonderCategorie: !parts && !catId };
+}
+
+function renderTxnBudgetCard() {
+  const el = document.getElementById('txn-detail-budget');
+  if (!el) return;
+  let e = null;
+  try { e = computeTxnBudgetEffect(); } catch (err) { console.error(err); }
+  if (!e) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const eur = formatEuroWhole;
+  const status = r => r.rood ? 'rood' : (r.beschikbaar > 0 && r.resterend <= r.beschikbaar * 0.10 ? 'bijna' : 'ruim');
+  const maandNaam = new Date(e.monthStr + 'T12:00:00').toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
+  const html = [];
+  e.regels.forEach(r => {
+    if (r.income) {
+      html.push(`<div class="bk-reg"><div class="bk-head"><b>${escapeHtml(r.naam)}</b><span class="bk-st ruim">Inkomsten</span></div><div class="bk-txt">Ontvangen in ${maandNaam}: ${eur(r.ontvangenVoor)} → ${eur(r.ontvangenNa)}${r.begroot ? ` (verwacht ${eur(r.begroot)})` : ''}</div></div>`);
+      return;
+    }
+    const st = status(r.na), geenBudget = r.voor.begroot === 0 && r.voor.beschikbaar <= 0;
+    const gevuld = st === 'rood' || r.na.beschikbaar <= 0 ? (r.na.uitgegeven > 0 || st === 'rood' ? 1 : 0) : Math.min(1, Math.max(0, r.na.uitgegeven / r.na.beschikbaar));
+    const label = st === 'rood' ? `Rood · tekort ${eur(r.tekort)}` : st === 'bijna' ? 'Bijna op' : (geenBudget ? 'Niet begroot' : 'Past in het budget');
+    html.push(`<div class="bk-reg"><div class="bk-head"><b>${escapeHtml(r.naam)}</b><span class="bk-st ${st}">${label}</span></div>
+      <div class="bk-bar"><div class="bk-fill ${st}" style="width:${gevuld * 100}%"></div></div>
+      <div class="bk-txt">Nog ${eur(r.voor.resterend)} → <b>${eur(r.na.resterend)}</b> in ${maandNaam} · ${formatEuro(r.dezeBoeking)} deze boeking</div>
+      ${r.tekort > 0 && r.dekking.length ? `<div class="bk-txt">Te dekken uit: ${r.dekking.map(d => `${escapeHtml(d.naam)} (${eur(d.beschikbaar)})`).join(', ')}</div>` : (r.tekort > 0 ? '<div class="bk-txt">Geen enkele categorie kan dit tekort alleen dekken.</div>' : '')}</div>`);
+  });
+  if (e.zonderCategorie) html.push(`<div class="bk-reg"><div class="bk-head"><b>Zonder categorie</b></div><div class="bk-txt">Gaat naar Klaar om toe te wijzen: ${eur(e.klaarVoor)} → <b>${eur(e.klaarNa)}</b></div></div>`);
+  else if (Math.round(e.klaarNa - e.klaarVoor) !== 0) html.push(`<div class="bk-txt" style="margin-top:4px">Klaar om toe te wijzen: ${eur(e.klaarVoor)} → <b>${eur(e.klaarNa)}</b></div>`);
+  if (e.toekomst) html.push('<div class="bk-txt" style="margin-top:4px">Deze transactie ligt in de toekomst: Klaar om toe te wijzen telt hem pas mee zodra de datum is bereikt.</div>');
+  el.innerHTML = html.join('');
+  el.style.display = 'block';
+}
+
+// Het formulier heeft veel invoerbronnen (bedrag, soort, categoriekiezer, splitsen, datumkiezer, rekening); in plaats van ze allemaal te
+// koppelen, kijkt een lichte timer elke 300 ms of er iets veranderd is zolang het formulier open staat.
+let txnBudgetWatch = null, txnBudgetSig = '';
+function txnBudgetSignature() {
+  const v = id => (document.getElementById(id) || {}).value;
+  return [v('txn-detail-amount'), getAmountType('txn-detail'), v('txn-detail-category-search'), v('txn-detail-date'), v('txn-detail-account'), splitMode, JSON.stringify(splitRows), currentTxnId, budgetRaw && budgetRaw.txns.length].join('|');
+}
+function startTxnBudgetWatch() {
+  if (txnBudgetWatch) clearInterval(txnBudgetWatch);
+  txnBudgetSig = '';
+  const tick = () => {
+    if (!document.getElementById('txn-detail-bg').classList.contains('open')) {
+      clearInterval(txnBudgetWatch); txnBudgetWatch = null;
+      const el = document.getElementById('txn-detail-budget'); if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+      return;
+    }
+    const sig = txnBudgetSignature();
+    if (sig !== txnBudgetSig) { txnBudgetSig = sig; renderTxnBudgetCard(); }
+  };
+  txnBudgetWatch = setInterval(tick, 300);
+  tick();
+}
+
 async function openTxnDetail(txnId) {
   currentTxnId = txnId;
   stagedReceiptFiles = [];
@@ -4530,6 +5229,7 @@ async function openTxnDetail(txnId) {
   renderReceiptPreview();
   renderAankoopPhotoPreview();
   document.getElementById('txn-detail-bg').classList.add('open');
+  startTxnBudgetWatch();
   // v3.72: bij een nieuwe transactie begin je met het bedrag.
   if (!txn) document.getElementById('txn-detail-amount').focus();
 }
