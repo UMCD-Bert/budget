@@ -152,6 +152,28 @@ window.runBudgetTests = async function (w) {
     await wait(400);
   }
 
+  // --- Koppel aan bestaande (bankboeking): datum én bedrag van de bank gaan het formulier in (v3.76) ---
+  {
+    await w.eval("sb.from('transactions').insert({ account_id: 1, category_id: 4, payee: 'Verwacht abonnement', amount: -135, date: '" + raw.todayStr + "', cleared: false })");
+    const verwacht = w.__db.transactions.find(t => t.payee === 'Verwacht abonnement');
+    const bankRij = { id: 'stg-koppel', account_id: 1, date: '2026-10-26', amount: -136.84 };
+    const houder = w.document.createElement('div');
+    houder.innerHTML = '<div class="recon-existing-list" style="display:none"></div>';
+    w.document.body.appendChild(houder);
+    await w.reconToggleExistingList(bankRij, houder, 'prive');
+    const knop = [...houder.querySelectorAll('button')].find(b => b.textContent.includes('Verwacht abonnement'));
+    check('Koppel aan bestaande: de onbevestigde transactie staat in de lijst', !!knop);
+    if (knop) {
+      click(knop);
+      await wait(900);
+      check('Koppel aan bestaande: het formulier krijgt het bankbedrag, de bankdatum en bevestigd', $('txn-detail-amount').value === '136.84' && $('txn-detail-date').value === '2026-10-26' && $('txn-detail-cleared').checked && w.getAmountType('txn-detail') === 'expense',
+        `${$('txn-detail-amount').value} / ${$('txn-detail-date').value} / ${$('txn-detail-cleared').checked}`);
+      click($('txn-detail-close'));
+      await wait(400);
+    }
+    houder.remove();
+  }
+
   // --- Meer dan 1000 transacties (PostgREST-limiet) ---
   let id = 50000;
   for (let i = 0; i < 2200; i++) w.__db.transactions.push({ id: id++, account_id: 1, category_id: 4, payee: 'x', amount: -1, date: raw.monthStr.slice(0, 8) + '01', cleared: true, notitie: null, link_type: null, linked_transaction_id: null });

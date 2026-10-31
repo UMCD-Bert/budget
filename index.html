@@ -1035,7 +1035,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.75';
+const APP_VERSION = 'v3.76';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1815,6 +1815,8 @@ async function reconToggleExistingList(row, containerDiv, scope) {
         await openTxnDetail(c.id);
         document.getElementById('txn-detail-cleared').checked = true;
         setDateValue('txn-detail-date', row.date); // de bankdatum is de waarheid
+        document.getElementById('txn-detail-amount').value = Math.abs(Number(row.amount)).toFixed(2); // ... en het bankbedrag ook
+        setAmountType('txn-detail', Number(row.amount) >= 0 ? 'income' : 'expense');
         pendingStagingClearId = row.id;
         pendingStagingClearScope = scope;
       });
