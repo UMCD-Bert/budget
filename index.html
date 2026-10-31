@@ -125,6 +125,9 @@
   .bank-links-title { font-size:12px; color:#555; text-transform:uppercase; letter-spacing:.3px; margin-bottom:8px; }
   .bank-link-btn { flex:1; min-width:96px; min-height:44px; border:none; border-radius:8px; font-size:13px; cursor:pointer; touch-action:manipulation; }
   .bank-links-hint { font-size:12px; color:#6b6b6b; margin-top:8px; }
+  .bank-expiry-banner { background:#fff4e5; border:1px solid #f0c27a; color:#7a4a00; border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:13px; }
+  .bank-expiry-banner.expired { background:#fdecea; border-color:#e8a29b; color:#8c1d13; }
+  .bank-expiry-banner div + div { margin-top:3px; }
   .txn-cleared-mark { display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; margin:-10px -12px -10px -4px; padding:0; font-size:18px; }
   @keyframes txnFlashNew { 0% { background:#fff59d; } 100% { background:var(--card); } }
   .txn-row.flash-new { animation: txnFlashNew 1.6s ease-out; }
@@ -359,6 +362,7 @@
       <div id="rta-note" class="rta-note"></div>
       <div style="font-size:11px; color:#6b6b6b; margin-top:6px;">Totaal saldo (privé + zakelijk): <span id="combined-total">€ 0,00</span></div>
     </div>
+    <div id="bank-expiry-banner"></div>
     <div id="budget-attention"></div>
     <div class="budget-monthbar">
       <button id="budget-month-prev" class="select-toggle-btn nav-btn" aria-label="Vorige maand">‹</button>
@@ -409,7 +413,8 @@
           </div>
           <p id="bankkoppeling-status-prive" style="font-size:12px; color:var(--red); margin:6px 0 0;"></p>
           <p id="bankkoppeling-status-zak" style="font-size:12px; color:var(--red); margin:6px 0 0;"></p>
-          <div class="bank-links-hint">Opnieuw koppelen is nodig als een koppeling verloopt (ongeveer elke 90 dagen).</div>
+          <div class="bank-links-hint">Opnieuw koppelen is nodig als een koppeling verloopt. Hieronder staat tot wanneer elke koppeling geldt (zodra je voor het eerst weer ophaalt bij de bank).</div>
+          <div id="bank-expiry-list" class="bank-links-hint"></div>
         </div>
         <button class="select-toggle-btn" id="add-account-btn" style="width:100%; min-height:44px; margin-bottom:10px;">+ Rekening toevoegen</button>
         <div id="accounts-list"><div class="empty">Nog geen rekeningen.</div></div>
@@ -1035,7 +1040,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.76';
+const APP_VERSION = 'v3.77';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1110,15 +1115,16 @@ async function refreshBankReconciliation(scope) {
     // zakelijk), ongeacht welke knop je indrukte. Zonder filtering telde/toonde de melding op
     // bijv. de Zakelijk-knop dus ook privé-resultaten mee ("8 nieuwe" terwijl die allemaal
     // privé bleken) — nu beperkt tot rekeningen die echt bij deze scope horen.
-    const { data: scopedAccounts } = await sb.from('accounts').select('id, name').eq('scope', scope);
+    const { data: scopedAccounts } = await sb.from('accounts').select('id, name, bank').eq('scope', scope);
     const scopedIds = new Set((scopedAccounts || []).map(a => a.id));
     const results = allResults.filter(r => scopedIds.has(r.account_id));
-    const expired = results.filter(r => r.status === 'consent_expired').length;
+    const expiredNames = results.filter(r => r.status === 'consent_expired').map(r => bankAccountLabel((scopedAccounts || []).find(a => a.id === r.account_id) || { name: 'Rekening' }));
+    const expired = expiredNames.length;
     const rateLimited = results.filter(r => r.status === 'rate_limited').length;
     const errored = results.filter(r => r.status === 'error').length;
     const newCount = results.reduce((sum, r) => sum + (r.new_count || 0), 0);
     let msg = newCount + ' nieuwe transactie(s) opgehaald.';
-    if (expired > 0) msg += ' ' + expired + ' rekening(en) hebben een verlopen koppeling — opnieuw koppelen via Beheer › Rekeningen.';
+    if (expired > 0) msg += (expired === 1 ? ' De koppeling van ' + expiredNames[0] + ' is verlopen' : ' De koppelingen van ' + expiredNames.join(', ') + ' zijn verlopen') + ' — opnieuw koppelen via Beheer › Rekeningen.';
     if (rateLimited > 0) msg += ' ' + rateLimited + ' rekening(en) tijdelijk niet beschikbaar (PSD2-limiet van 4x/dag bereikt, probeer later opnieuw).';
     if (errored > 0) {
       // v3.67: toon per rekening de reden, anders is niet te zien wat er misging.
@@ -1131,6 +1137,7 @@ async function refreshBankReconciliation(scope) {
     }
     statusEl.textContent = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) + ' — ' + msg;
     statusEl.classList.toggle('is-error', expired + rateLimited + errored > 0);
+    updateBankLinkStatus(); // de bankfunctie heeft zojuist de einddata van de koppelingen bijgewerkt
   } catch (e) {
     statusEl.textContent = 'Onverwachte fout: ' + e.message;
     statusEl.classList.add('is-error');
@@ -1832,15 +1839,66 @@ document.getElementById('bank-recon-refresh-btn-zak').addEventListener('click', 
 // Backlog-item: koppelsymbool bij de bankkoppel-knoppen tonen als er minstens één
 // betaalrekening voor die bank een echte koppeling heeft.
 const BANK_KEY_TO_ACCOUNT_BANK_STATUS = { asn: 'asn', rabo: 'rabobank', abnamro: 'abnamro' };
+// ---- Einddatum van bankkoppelingen (v3.77) ----
+const BANK_EXPIRY_WARN_DAYS = 7;
+// "Rabobank · Rabo": de bank erbij, tenzij die al in de naam staat.
+function bankAccountLabel(a) {
+  const b = BANK_LABELS[a.bank];
+  return b && !String(a.name).toLowerCase().includes(b.toLowerCase()) ? b + ' · ' + a.name : String(a.name);
+}
+function bankExpiryDays(untilIso, todayStr) {
+  if (!untilIso) return null;
+  const today = todayStr || toLocalISODate(new Date());
+  return Math.round((Date.parse(String(untilIso).slice(0, 10) + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000);
+}
+function bankExpiryText(days, untilIso) {
+  const d = new Date(String(untilIso).slice(0, 10) + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'long' });
+  if (days < 0) return 'verlopen op ' + d + ' — er komen geen nieuwe bankboekingen meer binnen';
+  if (days === 0) return 'verloopt vandaag';
+  if (days === 1) return 'verloopt morgen (' + d + ')';
+  return 'verloopt over ' + days + ' dagen (' + d + ')';
+}
+// Gekoppelde, niet-gesloten rekeningen waarvan de koppeling binnen een week verloopt of al verlopen is, het eerst verlopende bovenaan.
+function bankExpiryWarnings(accounts, todayStr) {
+  return (accounts || [])
+    .filter(a => a.enable_banking_account_uid && !a.closed && a.consent_valid_until)
+    .map(a => ({ label: bankAccountLabel(a), days: bankExpiryDays(a.consent_valid_until, todayStr), until: a.consent_valid_until }))
+    .filter(w => w.days <= BANK_EXPIRY_WARN_DAYS)
+    .sort((x, y) => x.days - y.days || x.label.localeCompare(y.label));
+}
+
 async function updateBankLinkStatus() {
-  const { data, error } = await sb.from('accounts').select('bank, enable_banking_account_uid').eq('type', 'checking');
+  let res = await sb.from('accounts').select('bank, name, closed, enable_banking_account_uid, consent_valid_until').eq('type', 'checking');
+  // De kolom consent_valid_until bestaat pas na de SQL-wijziging van v3.77; zonder die kolom werkt de rest gewoon door.
+  if (res.error) res = await sb.from('accounts').select('bank, name, closed, enable_banking_account_uid').eq('type', 'checking');
+  const { data, error } = res;
   if (error) { console.error(error); return; }
-  const linkedBanks = new Set((data || []).filter(a => a.enable_banking_account_uid).map(a => a.bank));
+  const linked = (data || []).filter(a => a.enable_banking_account_uid && !a.closed);
+  const linkedBanks = new Set(linked.map(a => a.bank));
+  const warnBanks = new Set(bankExpiryWarnings(data).map(w => w.label));
   document.querySelectorAll('.bank-link-indicator').forEach(span => {
     const accountBank = BANK_KEY_TO_ACCOUNT_BANK_STATUS[span.dataset.bank];
-    span.textContent = linkedBanks.has(accountBank) ? ' 🔗' : '';
-    span.title = linkedBanks.has(accountBank) ? 'Koppeling actief' : '';
+    const bankWarn = linked.some(a => a.bank === accountBank && warnBanks.has(bankAccountLabel(a)));
+    span.textContent = linkedBanks.has(accountBank) ? (bankWarn ? ' ⚠️' : ' 🔗') : '';
+    span.title = linkedBanks.has(accountBank) ? (bankWarn ? 'Koppeling verloopt bijna of is verlopen' : 'Koppeling actief') : '';
   });
+  // Overzicht in Beheer › Rekeningen: tot wanneer geldt elke koppeling?
+  const listEl = document.getElementById('bank-expiry-list');
+  if (listEl) {
+    const rows = linked.filter(a => a.consent_valid_until).map(a => ({ label: bankAccountLabel(a), days: bankExpiryDays(a.consent_valid_until), until: a.consent_valid_until }))
+      .sort((x, y) => x.days - y.days);
+    listEl.innerHTML = rows.map(r => `<div>${escapeHtml(r.label)}: ${escapeHtml(bankExpiryText(r.days, r.until))}</div>`).join('');
+  }
+  // Waarschuwing bovenaan het Budget-scherm, ruim voordat een koppeling verloopt.
+  const banner = document.getElementById('bank-expiry-banner');
+  if (banner) {
+    const w = bankExpiryWarnings(data);
+    if (!w.length) { banner.className = ''; banner.innerHTML = ''; }
+    else {
+      banner.className = 'bank-expiry-banner' + (w.some(x => x.days < 0) ? ' expired' : '');
+      banner.innerHTML = '<div><b>Bankkoppeling</b></div>' + w.map(x => `<div>${escapeHtml(x.label)}: ${escapeHtml(bankExpiryText(x.days, x.until))}.</div>`).join('') + '<div>Opnieuw koppelen kan via Beheer › Rekeningen.</div>';
+    }
+  }
 }
 
 function updateTopbarHeightVar() {

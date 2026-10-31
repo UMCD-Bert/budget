@@ -174,6 +174,39 @@ window.runBudgetTests = async function (w) {
     houder.remove();
   }
 
+  // --- Bankkoppelingen: tot wanneer geldt een koppeling, en welke bank is verlopen (v3.77) ---
+  {
+    check('Koppeling: de naam krijgt de bank erbij, tenzij die er al in staat',
+      w.bankAccountLabel({ name: 'Rabo', bank: 'rabobank' }) === 'Rabobank · Rabo' && w.bankAccountLabel({ name: 'Mijn Rabobank', bank: 'rabobank' }) === 'Mijn Rabobank' && w.bankAccountLabel({ name: 'Kas', bank: null }) === 'Kas');
+    const accs = [
+      { name: 'Rabo', bank: 'rabobank', enable_banking_account_uid: 'a', consent_valid_until: '2026-11-07T10:00:00Z' },
+      { name: 'ASN Betaal', bank: 'asn', enable_banking_account_uid: 'b', consent_valid_until: '2026-10-29T10:00:00Z' },
+      { name: 'Spaar', bank: 'asn', enable_banking_account_uid: null, consent_valid_until: '2026-10-30T10:00:00Z' },
+      { name: 'Oud', bank: 'abnamro', closed: true, enable_banking_account_uid: 'c', consent_valid_until: '2026-10-30T10:00:00Z' },
+      { name: 'Later', bank: 'abnamro', enable_banking_account_uid: 'd', consent_valid_until: '2026-11-08T10:00:00Z' }
+    ];
+    const wr = w.bankExpiryWarnings(accs, '2026-10-31');
+    check('Koppeling: waarschuwt vanaf een week en zet de verlopen koppeling bovenaan (niet gekoppeld, gesloten en later: niet)',
+      wr.length === 2 && wr[0].label === 'ASN Bank · ASN Betaal' && wr[0].days === -2 && wr[1].label === 'Rabobank · Rabo' && wr[1].days === 7, JSON.stringify(wr));
+
+    // Integratie: banner, Beheer-lijst en de melding bij een verlopen koppeling met de bank erbij.
+    const rek = w.__db.accounts.find(a => a.id === 1), oud = { ...rek };
+    const over4 = new Date(Date.now() + 4 * 86400000).toISOString();
+    Object.assign(rek, { bank: 'rabobank', name: 'Rabo', enable_banking_account_uid: 'u1', consent_valid_until: over4 });
+    await w.updateBankLinkStatus();
+    check('Koppeling: de banner op het Budget-scherm noemt bank en dagen', $('bank-expiry-banner').innerText.includes('Rabobank · Rabo') && $('bank-expiry-banner').innerText.includes('over 4 dagen'), $('bank-expiry-banner').innerText);
+    check('Koppeling: Beheer › Rekeningen toont tot wanneer de koppeling geldt', $('bank-expiry-list').innerText.includes('Rabobank · Rabo: verloopt over 4 dagen'), $('bank-expiry-list').innerText);
+    w.eval("Object.defineProperty(sb, 'functions', { configurable: true, value: { invoke: async () => ({ data: { results: [{ account_id: 1, status: 'consent_expired' }] }, error: null }) } })");
+    await w.refreshBankReconciliation('prive');
+    await wait(300);
+    check('Koppeling: de melding bij een verlopen koppeling noemt de bank', $('bank-recon-status-prive').textContent.includes('De koppeling van Rabobank · Rabo is verlopen'), $('bank-recon-status-prive').textContent);
+    w.eval("Object.defineProperty(sb, 'functions', { configurable: true, value: { invoke: async () => ({ data: { results: [] }, error: null }) } })");
+    Object.assign(rek, oud);
+    delete rek.enable_banking_account_uid; delete rek.consent_valid_until;
+    await w.updateBankLinkStatus();
+    check('Koppeling: zonder koppelingen verdwijnt de banner', $('bank-expiry-banner').innerText.trim() === '');
+  }
+
   // --- Meer dan 1000 transacties (PostgREST-limiet) ---
   let id = 50000;
   for (let i = 0; i < 2200; i++) w.__db.transactions.push({ id: id++, account_id: 1, category_id: 4, payee: 'x', amount: -1, date: raw.monthStr.slice(0, 8) + '01', cleared: true, notitie: null, link_type: null, linked_transaction_id: null });
