@@ -28,6 +28,18 @@ window.runBudgetTests = async function (w) {
     check('Golden: toegewezen, besteed en cumulatieven', gelijkMap(mg.assignedMap, verw.toegewezen) && gelijkMap(mg.cumAssignedMap, verw.cumulatiefToegewezen) && gelijkMap(mg.spentMap, verw.besteed) && gelijkMap(mg.cumSpentMap, verw.cumulatiefBesteed) && gelijkMap(mg.expectedMap, verw.verwacht));
     check('Golden: Klaar om toe te wijzen, overschrijding en totaal saldo', near(mg.rta, verw.klaarOmToeTeWijzen) && near(mg.rtaBefore, verw.klaarVoorOverschrijding) && near(mg.overspend, verw.overschrijding) && near(mg.combinedTotal, verw.totaalSaldo), `${mg.rta} / ${verw.klaarOmToeTeWijzen}`);
     check('Golden: tellers (zonder categorie, wacht op bank, te verwerken)', mg.noCategory === verw.zonderCategorie && mg.waiting === verw.wachtOpBank && mg.staging === verw.teVerwerken);
+
+    // v3.78: wat telt als "uitgave zonder categorie". Zelfde gevallen in KernTests.swift (ZonderCategorieTests).
+    const typen = [['checking', 9001], ['investment', 9002], ['cash', 9003], ['savings', 9004]];
+    const accs = inv.rekeningen.concat(typen.map(([type, id]) => ({ id, name: type, type, scope: 'prive', bank: null, starting_balance: 0 })));
+    const tx = (id, acc, extra) => ({ id, account_id: acc, category_id: null, payee: 'Winkel', amount: -10, date: inv.vandaag, cleared: true, link_type: null, ...extra });
+    const tel = nieuwe => w.deriveBudgetModel({ ...rawG, accounts: accs, txns: inv.transacties.concat(nieuwe) }).noCategory - mg.noCategory;
+    check('Zonder categorie: een gewone uitgave telt', tel([tx(90001, 9001)]) === 1);
+    check('Zonder categorie: beleggings-, contant- en spaarrekening tellen niet', tel([tx(90002, 9002), tx(90003, 9003), tx(90004, 9004)]) === 0);
+    check('Zonder categorie: "Correctie" telt niet, ook niet in hoofdletters', tel([tx(90005, 9001, { payee: 'Correctie' }), tx(90006, 9001, { payee: ' CORRECTIE ' })]) === 0);
+    check('Zonder categorie: bewust zonder categorie telt niet', tel([tx(90007, 9001, { bewust_zonder_categorie: true })]) === 0);
+    check('Zonder categorie: overschrijving, inkomst en toekomst tellen niet', tel([tx(90008, 9001, { link_type: 'transfer' }), tx(90009, 9001, { amount: 10 }), tx(90010, 9001, { date: '2099-01-01' })]) === 0);
+    check('Zonder categorie: wel Klaar om toe te wijzen: het bedrag gaat er nog steeds van af', near(w.deriveBudgetModel({ ...rawG, accounts: accs, txns: inv.transacties.concat([tx(90011, 9001, { bewust_zonder_categorie: true })]) }).rta, mg.rta - 10));
   }
 
   // --- Basis: getallen kloppen met de database ---
@@ -47,6 +59,22 @@ window.runBudgetTests = async function (w) {
     const st = n => { const h = [...w.document.querySelectorAll('[data-budget-toggle]')].find(e => e.querySelector('.cat-name').textContent.includes(n)); return h && h.dataset.open; };
     return st('Vrije tijd') === '1' && st('Huishouden') === '0';
   })());
+
+  // --- v3.78: vinkje "Bewust zonder categorie" in het transactieformulier ---
+  {
+    const bewustZichtbaar = () => $('txn-detail-bewust-wrap').style.display !== 'none';
+    await w.openTxnDetail(null);
+    $('txn-detail-amount').value = '12'; await wait(700);
+    check('Bewust zonder categorie: zichtbaar bij een uitgave zonder categorie', bewustZichtbaar());
+    $('txn-detail-bewust').checked = true;
+    const l = w.eval('txnDetailLeafOptions').find(x => Number(x.id) === 4);
+    $('txn-detail-category-search').value = l.label; await wait(700);
+    check('Bewust zonder categorie: verdwijnt (en wordt uitgevinkt) zodra er een categorie is', !bewustZichtbaar() && !$('txn-detail-bewust').checked);
+    $('txn-detail-category-search').value = ''; await wait(700);
+    click($('txn-detail-type-income')); await wait(700);
+    check('Bewust zonder categorie: niet bij een inkomst', !bewustZichtbaar());
+    click($('txn-detail-close'));
+  }
 
   // --- Vaste tabbalk onderaan mag geen inhoud verbergen ---
   w.scrollTo(0, 99999);
@@ -233,6 +261,32 @@ window.runBudgetTests = async function (w) {
     check('Golden dashboard: totalen per categorie per maand', [...new Set([...Object.keys(nu.totals), ...Object.keys(dv.categorieTotalen)])].every(k => gelijkM(nu.totals[k] || {}, dv.categorieTotalen[k] || {})));
     check('Golden dashboard: gemiddelde per categorie (incl. gespreid door de maand)', Object.keys(dv.gemiddelde).every(k => near(w.dashCategoryAverage(k), dv.gemiddelde[k])));
     check('Golden dashboard: Geldleeftijd per maand en nu', JSON.stringify(nu.leeftijden) === JSON.stringify(dv.geldleeftijdPerMaand) && parseInt($('header-money-age').textContent) === dv.geldleeftijdNu, `${JSON.stringify(nu.leeftijden)} / ${$('header-money-age').textContent}`);
+    // v3.78: aanwijsbubbel in de grafieken
+    {
+      const aanwijzen = (el, x = 120, y = 300) => el.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y }));
+      const bubbel = () => w.document.querySelector('.chart-tip');
+      const zichtbaar = () => !!bubbel() && bubbel().style.display === 'block';
+      const hit = sel => w.document.querySelector(sel + ' [data-tip]');
+      const alle = sel => w.document.querySelectorAll(sel + ' [data-tip]').length;
+      const maanden = nu.maanden.length;
+      check('Grafieken: geldleeftijd en inkomsten/uitgaven hebben een aanwijsvlak per maand', alle('#dash-money-age-list') === maanden && alle('#dash-monthly-saldo-list') === maanden, `${alle('#dash-money-age-list')}/${alle('#dash-monthly-saldo-list')}/${maanden}`);
+      const h = hit('#dash-monthly-saldo-list');
+      aanwijzen(h);
+      const tekst = zichtbaar() ? bubbel().innerText : '';
+      check('Grafieken: wijzen toont maand, inkomsten, uitgaven en saldo', /\d{4}/.test(tekst) && ['Inkomsten', 'Uitgaven', 'Saldo'].every(t => tekst.includes(t)) && tekst.includes('€'), tekst.replace(/\n/g, ' / '));
+      const staaf = h.getAttribute('data-tip').split('|');
+      const uit = nu.uitgaven[Object.keys(nu.uitgaven).sort()[0]];
+      check('Grafieken: het bedrag in de bubbel komt uit dezelfde gegevens als de grafiek', staaf[0] === w.tipMaand(nu.maanden[0]) && staaf[2] === 'Uitgaven ' + w.formatEuro(Math.abs(uit || 0)), staaf.join(' / '));
+      aanwijzen(w.document.body, 5, 5);
+      check('Grafieken: buiten een grafiek verdwijnt de bubbel weer', !zichtbaar());
+      aanwijzen(hit('#dash-money-age-list'));
+      check('Grafieken: geldleeftijd noemt de dagen', zichtbaar() && /Geldleeftijd \d+ dag|Nog geen gegevens/.test(bubbel().innerText), bubbel() && bubbel().innerText);
+      const rest = ['#dz-spaar-chart', '#dz-verdeling-body'].filter(sel => w.document.querySelector(sel));
+      check('Grafieken: spaarquote en verdeling hebben aanwijsvlakken waar ze getoond worden', rest.every(sel => alle(sel) > 0), rest.join(','));
+      const lijnen = w.document.querySelectorAll('#dash-inzichten svg.dash-chart .chart-hit').length;
+      check('Grafieken: de inzichten (saldo, vooruitblik, begroot/besteed) hebben aanwijsvlakken', lijnen > 12, lijnen);
+      aanwijzen(w.document.body, 5, 5);
+    }
   }
 
   return results;

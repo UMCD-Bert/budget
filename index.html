@@ -228,6 +228,10 @@
   .progress-bar-fill { height:100%; border-radius:3px; }
   .ie-column-total { display:flex; justify-content:space-between; align-items:center; font-weight:bold; padding:10px 12px; margin-top:6px; border-top:2px solid var(--border); font-size:13px; }
   .dash-chart { display:block; margin:6px 0; }
+  .chart-hit { fill: transparent; }
+  .chart-hit:hover { fill: rgba(0,0,0,0.07); }
+  svg [data-tip]:not(.chart-hit):hover { opacity: 0.8; }
+  .chart-tip { position: fixed; z-index: 10000; display: none; pointer-events: none; background: #222; color: #fff; font-size: 13px; line-height: 1.35; padding: 6px 9px; border-radius: 6px; max-width: 240px; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
   .dash-bar-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
   .dash-bar-label { width:120px; flex-shrink:0; font-size:12px; overflow-wrap:break-word; }
   .dash-bar-track { flex:1; height:14px; background:#e0e0e0; border-radius:4px; overflow:hidden; }
@@ -885,6 +889,10 @@
       </div>
       <button type="button" id="txn-detail-split-toggle-off" style="margin-top:4px; background:none; border:none; color:#6b6b6b; font-size:12px; padding:0; cursor:pointer;">− Splitsing annuleren</button>
     </div>
+    <label style="display:none; align-items:flex-start; gap:6px; margin-top:10px;" id="txn-detail-bewust-wrap">
+      <input type="checkbox" id="txn-detail-bewust" style="width:auto; margin-top:3px;">
+      <span>Bewust zonder categorie <span style="color:#6b6b6b; font-size:12px;">(telt niet mee bij ‘uitgaven zonder categorie’; het bedrag gaat wel van Klaar om toe te wijzen af)</span></span>
+    </label>
     <label>Rekening</label>
     <select id="txn-detail-account"></select>
     <label>Datum</label>
@@ -1040,7 +1048,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.77';
+const APP_VERSION = 'v3.78';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1993,13 +2001,31 @@ async function fetchAllRows(makeQuery, pageSize = 1000) {
 // vanuit deze app wordt de lijst direct ongeldig; wijzigingen vanaf een ander toestel zijn binnen 15 seconden zichtbaar.
 let ledgerCache = null, ledgerCacheTs = 0, ledgerInflight = null, ledgerVersion = 0;
 const LEDGER_TTL_MS = 15000;
+// v3.78: wat telt als "uitgave zonder categorie" (Aandacht, tellers en de lijst erachter). Beleggings-, contant- en spaarrekeningen en
+// "Correctie"-boekingen (saldocontrole) zijn boekhoudkundige aanpassingen, geen uitgaven; en een boeking kan bewust zonder categorie
+// zijn gemarkeerd. Dezelfde regel staat in BudgetKern (`Zonder categorie`): pas beide aan.
+const NOCAT_BOEKHOUDING_TYPES = new Set(['investment', 'cash', 'savings']);
+function telAlsZonderCategorie(t, accountType) {
+  if (Number(t.amount) >= 0) return false;
+  if (t.link_type === 'transfer' || t.link_type === 'offset') return false;
+  if (t.bewust_zonder_categorie) return false;
+  if (String(t.payee || '').trim().toLowerCase() === 'correctie') return false;
+  return !NOCAT_BOEKHOUDING_TYPES.has(accountType);
+}
+// Het kasboek met de kolom `bewust_zonder_categorie`; bestaat die nog niet in de database, dan zonder.
+const LEDGER_KOLOMMEN = 'id, account_id, category_id, payee, amount, date, cleared, link_type';
+async function fetchLedgerRows() {
+  let res = await fetchAllRows(() => sb.from('transactions').select(LEDGER_KOLOMMEN + ', bewust_zonder_categorie'));
+  if (res.error && /bewust_zonder_categorie|42703/.test(JSON.stringify(res.error))) res = await fetchAllRows(() => sb.from('transactions').select(LEDGER_KOLOMMEN));
+  return res;
+}
 function invalidateLedger() { ledgerVersion++; ledgerCache = null; ledgerInflight = null; }
 async function getLedger() {
   if (ledgerCache && Date.now() - ledgerCacheTs < LEDGER_TTL_MS) return { data: ledgerCache, error: null };
   if (ledgerInflight) return ledgerInflight;
   const version = ledgerVersion;
   const p = (async () => {
-    const res = await fetchAllRows(() => sb.from('transactions').select('id, account_id, category_id, amount, date, cleared, link_type'));
+    const res = await fetchLedgerRows();
     if (res.error) return res;
     res.data.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : Number(a.id) - Number(b.id)));
     if (version === ledgerVersion) { ledgerCache = res.data; ledgerCacheTs = Date.now(); }
@@ -2574,6 +2600,9 @@ async function loadDashboard() {
     const dots = ages.map((a, i) => a === null ? '' : `<circle cx="${xFor(i)}" cy="${yFor(a)}" r="7" fill="${a > 30 ? '#f9a825' : '#1b5e20'}" stroke="#fff" stroke-width="2" data-month="${monthsArr[i]}" data-age="${a}"></circle>`).join('');
     const valueLabels = ages.map((a, i) => a === null ? '' : `<text x="${xFor(i)}" y="${yFor(a) - 12}" font-size="14" font-weight="500" fill="#222" text-anchor="middle">${a}d</text>`).join('');
     const thresholdY = yFor(30);
+    const hitW = stepX || plotW;
+    const hits = monthsArr.map((m, i) => tipHit(xFor(i) - hitW / 2, padTop - 20, hitW, plotH + 20, tipMaand(m),
+      ages[i] === null ? 'Nog geen gegevens' : `Geldleeftijd ${ages[i]} ${ages[i] === 1 ? 'dag' : 'dagen'}${ages[i] > 30 ? ' ⭐' : ''}`)).join('');
     const labelIdx = monthLabelIndices(monthsArr, w);
     // Rand-labels (eerste/laatste maand) tegen de rand uitlijnen i.p.v. centreren, anders vallen
     // ze links/rechts van het canvas en worden ze afgekapt.
@@ -2589,6 +2618,7 @@ async function loadDashboard() {
       ${dots}
       ${valueLabels}
       ${labels}
+      ${hits}
     </svg>`;
   }
 
@@ -2638,6 +2668,7 @@ async function loadDashboard() {
       ${bars}
       ${valueLabels}
       ${labels}
+      ${monthsArr.map((m, i) => tipHit(padLeft + i * slot, padTop - 20, slot, plotH + 20, tipMaand(m), `Inkomsten ${formatEuro(incomeArr[i])}`, `Uitgaven ${formatEuro(expenseAbsArr[i])}`, `Saldo ${incomeArr[i] - expenseAbsArr[i] >= 0 ? '+' : ''}${tipEuro(incomeArr[i] - expenseAbsArr[i])}`)).join('')}
     </svg>`;
   }
 
@@ -3005,9 +3036,9 @@ async function loadDashInzichten() {
   if (!box) return;
   const todayStr = toLocalISODate(new Date());
   const [accRes, catRes, txnRes, splitRes, budRes, recRes, stRes] = await Promise.all([
-    sb.from('accounts').select('id, scope, starting_balance'),
+    sb.from('accounts').select('id, scope, type, starting_balance'),
     sb.from('categories').select('id, parent_id, name, type, scope, spread_through_month'),
-    fetchAllRows(() => sb.from('transactions').select('id, account_id, category_id, payee, amount, date, cleared, link_type')),
+    fetchLedgerRows(),
     fetchAllRows(() => sb.from('transaction_splits').select('id, transaction_id, category_id, amount')),
     fetchAllRows(() => sb.from('budget_months').select('id, category_id, month, assigned')),
     sb.from('recurring_transactions').select('account_id, category_id, payee, amount, frequency, next_date, active').eq('active', true),
@@ -3025,9 +3056,37 @@ async function loadDashInzichten() {
 
 const DZ_COLORS = ['#1b5e20', '#1565c0', '#f9a825', '#6a1b9a', '#c62828', '#757575'];
 function dzW(el) { return Math.min(700, Math.max(280, Math.round(el.clientWidth) || 340)); }
+// ---- Aanwijsbubbel voor de grafieken (v3.78) ----
+// Een grafiekelement met `data-tip="Titel|regel|regel"` toont die tekst in een bubbel zodra je erop wijst (muis) of tikt (aanraken).
+// Staven en punten krijgen een onzichtbaar aanwijsvlak (`tipHit`) over de hele hoogte, zodat je niet precies hoeft te mikken.
+function tipMaand(m) { return new Date(String(m).slice(0, 7) + '-01T12:00:00').toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' }); }
+function tipEuro(v) { return (Number(v) < -0.004 ? '−' : '') + formatEuro(Math.abs(Number(v))); }
+function tipAttr(...regels) { return `data-tip="${escapeHtml(regels.filter(Boolean).join('|'))}"`; }
+function tipHit(x, y, w, h, ...regels) { return `<rect class="chart-hit" x="${x}" y="${y}" width="${Math.max(1, w)}" height="${Math.max(1, h)}" ${tipAttr(...regels)}></rect>`; }
+(function () {
+  let tip = null;
+  const verberg = () => { if (tip) tip.style.display = 'none'; };
+  function toon(doel, cx, cy) {
+    if (!tip) { tip = document.createElement('div'); tip.className = 'chart-tip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip); }
+    const regels = (doel.getAttribute('data-tip') || '').split('|');
+    tip.innerHTML = `<b>${escapeHtml(regels[0])}</b>` + regels.slice(1).map(r => `<div>${escapeHtml(r)}</div>`).join('');
+    tip.style.display = 'block';
+    const b = tip.getBoundingClientRect();
+    let x = Math.min(Math.max(4, cx - b.width / 2), window.innerWidth - b.width - 4);
+    let y = cy - b.height - 14;
+    if (y < 4) y = cy + 18;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+  const bijAanwijzen = e => { const d = e.target && e.target.closest ? e.target.closest('[data-tip]') : null; if (d) toon(d, e.clientX, e.clientY); else verberg(); };
+  document.addEventListener('pointermove', bijAanwijzen);
+  document.addEventListener('pointerdown', bijAanwijzen);
+  document.addEventListener('scroll', verberg, true);
+  document.addEventListener('pointercancel', verberg);
+  document.documentElement.addEventListener('mouseleave', verberg);
+})();
 function dzPct(x) { return `${Math.round(x * 100)}%`; }
 function dzGroup(title, inner, footer) { return `<div class="group"><h3>${title}</h3>${inner}${footer ? `<div class="dz-foot">${footer}</div>` : ''}</div>`; }
-function dzBarsChart(items, w, h, valueKey, colorFn, fmtFn, avg) {
+function dzBarsChart(items, w, h, valueKey, colorFn, fmtFn, avg, tipFn) {
   const padL = 8, padR = 8, padT = 22, padB = 22, plotW = w - padL - padR, plotH = h - padT - padB;
   const vals = items.map(i => i[valueKey]);
   const max = Math.max(...vals, 0.0001, avg || 0), min = Math.min(...vals, 0);
@@ -3036,12 +3095,14 @@ function dzBarsChart(items, w, h, valueKey, colorFn, fmtFn, avg) {
   const idx = monthLabelIndices(items.map(i => i.maand.slice(0, 7)), w);
   let s = `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;"><line x1="${padL}" y1="${zero}" x2="${w - padR}" y2="${zero}" stroke="#ccc"></line>`;
   if (avg !== null && avg !== undefined) s += `<line x1="${padL}" y1="${y(avg)}" x2="${w - padR}" y2="${y(avg)}" stroke="#f9a825" stroke-dasharray="4,3"></line>`;
+  let hits = '';
   items.forEach((it, i) => {
     const v = it[valueKey], cx = padL + i * slot + slot / 2, top = Math.min(y(v), zero), hh = Math.abs(y(v) - zero);
+    hits += tipHit(padL + i * slot, padT - 10, slot, plotH + 10, tipMaand(it.maand), (tipFn || fmtFn)(v) + (it.lopend ? ' (lopende maand)' : ''));
     s += `<rect x="${cx - bw / 2}" y="${top}" width="${bw}" height="${Math.max(1, hh)}" fill="${colorFn(it)}" ${it.lopend ? 'opacity="0.5"' : ''}></rect>`;
     if (idx.has(i)) s += `<text x="${cx}" y="${h - 6}" font-size="12" text-anchor="middle" fill="#6b6b6b">${formatMonthLabelNL(it.maand.slice(0, 7))}</text><text x="${cx}" y="${(v >= 0 ? top : top + hh) + (v >= 0 ? -4 : 12)}" font-size="11" text-anchor="middle" fill="#222">${fmtFn(v)}</text>`;
   });
-  return s + '</svg>';
+  return s + hits + '</svg>';
 }
 
 function renderDashInzichten(d) {
@@ -3079,7 +3140,8 @@ function renderDashInzichten(d) {
       <line x1="${padL}" y1="${y(0)}" x2="${w - padR}" y2="${y(0)}" stroke="#ccc"></line>
       <text x="${w - 2}" y="${y(max) + 4}" font-size="11" text-anchor="end" fill="#6b6b6b">${compact(max)}</text><text x="${w - 2}" y="${y(min) + 4}" font-size="11" text-anchor="end" fill="#6b6b6b">${compact(min)}</text>
       ${line('zakelijk', '#1565c0', 2)}${line('prive', '#43a047', 2)}${line('totaal', '#222', 3)}
-      ${pts.map((p, i) => idx.has(i) ? `<text x="${x(i)}" y="${h - 6}" font-size="12" text-anchor="${i === 0 ? 'start' : i === pts.length - 1 ? 'end' : 'middle'}" fill="#6b6b6b">${formatMonthLabelNL(p.maand)}</text>` : '').join('')}</svg>`;
+      ${pts.map((p, i) => idx.has(i) ? `<text x="${x(i)}" y="${h - 6}" font-size="12" text-anchor="${i === 0 ? 'start' : i === pts.length - 1 ? 'end' : 'middle'}" fill="#6b6b6b">${formatMonthLabelNL(p.maand)}</text>` : '').join('')}
+      ${pts.map((p, i) => { const st = pts.length > 1 ? (w - padL - padR) / (pts.length - 1) : (w - padL - padR); return tipHit(x(i) - st / 2, padT, st, h - padT - padB, tipMaand(p.maand), `Privé ${tipEuro(p.prive)}`, `Zakelijk ${tipEuro(p.zakelijk)}`, `Samen ${tipEuro(p.totaal)}`); }).join('')}</svg>`;
     html.push(dzGroup('Saldo aan het einde van de maand', `<div class="dz-big"><div><div class="dz-cap">Totaal saldo nu</div><div class="dz-num">${eur(nu.totaal)}</div></div><div class="dz-side">Privé ${eur(nu.prive)}<br>Zakelijk ${eur(nu.zakelijk)}</div></div>${svg}
       <div class="dz-legend"><span><i style="background:#43a047"></i>Privé</span><span><i style="background:#1565c0"></i>Zakelijk</span><span><i style="background:#222"></i>Samen</span></div>`));
   }
@@ -3098,7 +3160,8 @@ function renderDashInzichten(d) {
       <polyline points="${v.punten.map((p, i) => `${x(i)},${y(p.saldo)}`).join(' ')}" fill="none" stroke="#43a047" stroke-width="2"></polyline>
       <circle cx="${x(li)}" cy="${y(v.laagste.saldo)}" r="5" fill="${krap ? '#c62828' : '#f9a825'}"></circle>
       <text x="${w - 2}" y="${y(max) + 4}" font-size="11" text-anchor="end" fill="#6b6b6b">${compact(max)}</text><text x="${w - 2}" y="${y(min) + 4}" font-size="11" text-anchor="end" fill="#6b6b6b">${compact(min)}</text>
-      <text x="${padL}" y="${h - 4}" font-size="12" fill="#6b6b6b">${formatDateNL(v.punten[0].dag)}</text><text x="${w - padR}" y="${h - 4}" font-size="12" text-anchor="end" fill="#6b6b6b">${formatDateNL(v.punten[v.punten.length - 1].dag)}</text></svg>`;
+      <text x="${padL}" y="${h - 4}" font-size="12" fill="#6b6b6b">${formatDateNL(v.punten[0].dag)}</text><text x="${w - padR}" y="${h - 4}" font-size="12" text-anchor="end" fill="#6b6b6b">${formatDateNL(v.punten[v.punten.length - 1].dag)}</text>
+      ${v.punten.map((p, i) => tipHit(x(i) - (w - padL - padR) / (v.punten.length - 1) / 2, padT, (w - padL - padR) / (v.punten.length - 1), h - padT - padB, formatDateNL(p.dag), `Saldo ${tipEuro(p.saldo)}`)).join('')}</svg>`;
     html.push(dzGroup('Vooruitblik: 90 dagen', `<div class="dz-cap">Laagste punt komende 90 dagen</div><div class="dz-num ${krap ? 'neg' : ''}">${eur(v.laagste.saldo)}</div><div class="dz-cap">rond ${dzShortDate(v.laagste.dag)}</div>${svg}
       ${v.komend.map(b => `<div class="dz-line"><span class="dz-cap" style="width:110px">${dzShortDate(b.dag)}</span><span class="dz-grow">${escapeHtml(b.naam)}</span><span class="${b.bedrag < 0 ? 'neg' : 'pos'}">${formatEuro(b.bedrag)}</span></div>`).join('')}`,
       `Op basis van je saldo van privé, geplande en herhalende betalingen, en gemiddeld ${formatEuro(-v.gemiddeldPerDag)} per dag aan overige uitgaven.`));
@@ -3151,7 +3214,7 @@ function renderDashInzichten(d) {
   if (sq.maanden.filter(m => m.quote !== null).length >= 2) {
     const items = sq.maanden.filter(m => m.quote !== null).map(m => ({ maand: m.maand, waarde: m.quote * 100, lopend: m.lopend }));
     html.push(dzGroup('Spaarquote', `<div class="dz-big"><div><div class="dz-cap">Gemiddeld laatste ${sq.maanden.length} maanden</div><div class="dz-num">${sq.gemiddelde !== null ? dzPct(sq.gemiddelde) : '–'}</div></div>${sq.vorigJaar !== null ? `<div class="dz-side"><span class="dz-cap">Daarvoor</span><br><b>${dzPct(sq.vorigJaar)}</b></div>` : ''}</div>
-      <div id="dz-spaar-chart">${dzBarsChart(items, 340, 170, 'waarde', i => i.waarde >= 0 ? '#43a047' : '#c62828', x => Math.round(x) + '%', sq.gemiddelde !== null ? sq.gemiddelde * 100 : null)}</div>`,
+      <div id="dz-spaar-chart">${dzBarsChart(items, 340, 170, 'waarde', i => i.waarde >= 0 ? '#43a047' : '#c62828', x => Math.round(x) + '%', sq.gemiddelde !== null ? sq.gemiddelde * 100 : null, x => `${x.toFixed(1).replace('.', ',')}% van je inkomen`)}</div>`,
       'Het deel van je inkomen dat je overhoudt. De lopende maand is lichter getekend en telt niet mee in het gemiddelde.'));
   }
 
@@ -3162,7 +3225,8 @@ function renderDashInzichten(d) {
     const svg = `<svg viewBox="0 0 ${w} ${h}" class="dash-chart" style="width:100%; height:auto;"><line x1="8" y1="${padT + plotH}" x2="${w - 8}" y2="${padT + plotH}" stroke="#ccc"></line>` + bb.map((r, i) => {
       const cx = 8 + i * slot + slot / 2, hb = r.begroot / max * plotH, hs = Math.max(0, r.besteed) / max * plotH;
       return `<rect x="${cx - bw - 1}" y="${padT + plotH - hb}" width="${bw}" height="${hb}" fill="#c9c9c9"></rect><rect x="${cx + 1}" y="${padT + plotH - hs}" width="${bw}" height="${hs}" fill="${r.overBudget ? '#c62828' : '#1b5e20'}"></rect>`
-        + (idx.has(i) ? `<text x="${cx}" y="${h - 6}" font-size="12" text-anchor="middle" fill="#6b6b6b">${formatMonthLabelNL(r.maand.slice(0, 7))}</text>` : '');
+        + (idx.has(i) ? `<text x="${cx}" y="${h - 6}" font-size="12" text-anchor="middle" fill="#6b6b6b">${formatMonthLabelNL(r.maand.slice(0, 7))}</text>` : '')
+        + tipHit(8 + i * slot, padT, slot, plotH, tipMaand(r.maand), `Begroot ${formatEuro(r.begroot)}`, `Besteed ${formatEuro(r.besteed)}`, r.roodAantal ? `${r.roodAantal} ${r.roodAantal === 1 ? 'categorie' : 'categorieën'} rood` : '');
     }).join('') + '</svg>';
     html.push(dzGroup('Begroot tegenover besteed', `${svg}<div class="dz-legend"><span><i style="background:#c9c9c9"></i>Begroot</span><span><i style="background:#1b5e20"></i>Besteed</span></div>` +
       [...bb].reverse().map(r => `<div class="dz-line"><span class="dz-cap" style="width:60px">${formatMonthLabelNL(r.maand.slice(0, 7)).toUpperCase()}</span><span class="dz-grow">${eur(r.besteed)} van ${eur(r.begroot)}</span>${r.roodAantal ? `<b class="neg">${r.roodAantal} rood</b>` : (!r.lopend ? '<span class="pos">✓</span>' : '')}</div>`).join(''),
@@ -3173,7 +3237,7 @@ function renderDashInzichten(d) {
   if (d.zakelijk && d.zakelijk.maanden.length) {
     const z = d.zakelijk, items = z.maanden.map(m => ({ maand: m.maand, waarde: m.resultaat }));
     html.push(dzGroup('Zakelijk resultaat', `<div class="dz-big"><div><div class="dz-cap">Resultaat dit jaar</div><div class="dz-num ${z.ditJaar < 0 ? 'neg' : ''}">${eur(z.ditJaar)}</div></div>${z.beste && z.beste.resultaat > 0 ? `<div class="dz-side"><span class="dz-cap">Beste maand</span><br><b>${formatMonthLabelNL(z.beste.maand.slice(0, 7)).toUpperCase()} ${eur(z.beste.resultaat)}</b></div>` : ''}</div>
-      ${dzBarsChart(items, 340, 150, 'waarde', i => i.waarde >= 0 ? '#1565c0' : '#c62828', x => String(Math.round(x)), null)}`, 'Ontvangen min uitgegeven op je zakelijke rekeningen, zonder overboekingen met privé.'));
+      ${dzBarsChart(items, 340, 150, 'waarde', i => i.waarde >= 0 ? '#1565c0' : '#c62828', x => String(Math.round(x)), null, x => `Resultaat ${tipEuro(x)}`)}`, 'Ontvangen min uitgegeven op je zakelijke rekeningen, zonder overboekingen met privé.'));
   }
 
   box.innerHTML = html.join('');
@@ -3187,8 +3251,9 @@ function renderDashInzichten(d) {
     const R = 52, r = 32, arcs = vd.delen.map((dl, i) => {
       const a1 = hoek, a2 = hoek + dl.aandeel * 2 * Math.PI; hoek = a2;
       const p = (rad, a) => `${60 + rad * Math.cos(a)},${60 + rad * Math.sin(a)}`, groot = a2 - a1 > Math.PI ? 1 : 0;
-      if (dl.aandeel >= 0.9999) return `<circle cx="60" cy="60" r="${(R + r) / 2}" fill="none" stroke="${DZ_COLORS[i % 6]}" stroke-width="${R - r}"></circle>`;
-      return `<path d="M${p(R, a1)} A${R},${R} 0 ${groot} 1 ${p(R, a2)} L${p(r, a2)} A${r},${r} 0 ${groot} 0 ${p(r, a1)} Z" fill="${DZ_COLORS[i % 6]}" stroke="#fff" stroke-width="1"></path>`;
+      const tipD = tipAttr(dl.naam, formatEuro(dl.bedrag), dzPct(dl.aandeel));
+      if (dl.aandeel >= 0.9999) return `<circle cx="60" cy="60" r="${(R + r) / 2}" fill="none" stroke="${DZ_COLORS[i % 6]}" stroke-width="${R - r}" ${tipD}></circle>`;
+      return `<path d="M${p(R, a1)} A${R},${R} 0 ${groot} 1 ${p(R, a2)} L${p(r, a2)} A${r},${r} 0 ${groot} 0 ${p(r, a1)} Z" fill="${DZ_COLORS[i % 6]}" stroke="#fff" stroke-width="1" ${tipD}></path>`;
     }).join('');
     body.innerHTML = `<div class="dz-donut"><svg viewBox="0 0 120 120" width="120" height="120">${arcs}<text x="60" y="56" font-size="9" text-anchor="middle" fill="#6b6b6b">Totaal</text><text x="60" y="70" font-size="12" font-weight="bold" text-anchor="middle">${eur(vd.totaal)}</text></svg>
       <div class="dz-grow">${vd.delen.map((dl, i) => `<div class="dz-line"><span><i class="dz-dot" style="background:${DZ_COLORS[i % 6]}"></i>${escapeHtml(dl.naam)}</span><span class="dz-cap">${dzPct(dl.aandeel)}</span></div>`).join('')}</div></div>
@@ -3761,7 +3826,7 @@ async function loadBudget() {
     getLedger(),
     fetchAllRows(() => sb.from('transaction_splits').select('id, transaction_id, category_id, amount, transactions!inner(date)').lt('transactions.date', limitStr)),
     sb.from('recurring_transactions').select('category_id, amount, next_date').eq('active', true).gte('next_date', startStr).lt('next_date', endStr),
-    sb.from('accounts').select('id, scope, starting_balance'),
+    sb.from('accounts').select('id, scope, type, starting_balance'),
     sb.from('bank_transactions_staging').select('id, accounts!inner(scope)').eq('accounts.scope', 'prive').is('processed_at', null)
   ]);
   // Zonder deze vier zou elk getal stilletjes fout zijn; dan liever de laatst bekende weergave.
@@ -3827,6 +3892,8 @@ function deriveBudgetModel(raw) {
   // als "ongecategoriseerd" (hun bedrag zit al in de split-categorieën).
   const priveIds = new Set(raw.accounts.filter(a => a.scope === 'prive').map(a => String(a.id)));
   const splitTxnIds = new Set(raw.splits.map(s => String(s.transaction_id)));
+  const accTypeById = {};
+  raw.accounts.forEach(a => { accTypeById[String(a.id)] = a.type; });
   let startPrive = 0, combinedTotal = 0;
   raw.accounts.forEach(a => { combinedTotal += Number(a.starting_balance); if (a.scope === 'prive') startPrive += Number(a.starting_balance); });
   let totalUnassigned = 0, totalReceivedIncome = 0, noCategory = 0, waiting = 0;
@@ -3839,7 +3906,7 @@ function deriveBudgetModel(raw) {
     if (splitTxnIds.has(String(t.id))) return;
     if (t.category_id === null || t.category_id === undefined) {
       totalUnassigned += a;
-      if (a < 0 && t.link_type !== 'transfer' && t.link_type !== 'offset') noCategory++;
+      if (telAlsZonderCategorie(t, accTypeById[String(t.account_id)])) noCategory++;
     } else if (rootType(t.category_id) === 'income') {
       totalReceivedIncome += a;
     }
@@ -4600,7 +4667,7 @@ function updateMainMonthLabel() {
 async function loadTransactions() {
   updateTxnFilterCount();
   // Volledige, chronologische ledger per rekening ophalen om een kloppend historisch saldo te kunnen tonen
-  const { data: accounts } = await sb.from('accounts').select('id, name, bank, starting_balance, scope');
+  const { data: accounts } = await sb.from('accounts').select('id, name, bank, starting_balance, scope, type');
   const startingByAccount = {};
   const accountMeta = {};
   (accounts || []).forEach(a => { startingByAccount[a.id] = Number(a.starting_balance); accountMeta[a.id] = a; });
@@ -4655,7 +4722,21 @@ async function loadTransactions() {
     // v3.70: "Zonder categorie" (vanuit Aandacht op Budget): alle uitgaven t/m vandaag zonder categorie,
     // ongeacht maand — net als bij zoeken is maandnavigatie dan niet van toepassing.
     monthNav.style.display = 'none';
-    query = query.is('category_id', null).lt('amount', 0).lte('date', toLocalISODate(new Date())).limit(300);
+    // v3.78: precies de boekingen die de teller telt (zie telAlsZonderCategorie): geen overschrijvingen, splitsingen, beleggings-/contant-/
+    // spaarrekeningen, "Correctie" of bewust zonder categorie. Het kasboek heeft ze al; alleen de splitsingen halen we erbij.
+    const todayNoCat = toLocalISODate(new Date());
+    const splitRes = await fetchAllRows(() => sb.from('transaction_splits').select('transaction_id'));
+    const splitIds = new Set((splitRes.data || []).map(r => String(r.transaction_id)));
+    const typeById = {};
+    (accounts || []).forEach(a => { typeById[String(a.id)] = a.type; });
+    const scopedSet = new Set(scopedFilterIds.map(String));
+    const noCatIds = (allTxnsWithAmount || [])
+      .filter(t => (t.category_id === null || t.category_id === undefined) && t.date <= todayNoCat && scopedSet.has(String(t.account_id))
+        && !splitIds.has(String(t.id)) && telAlsZonderCategorie(t, typeById[String(t.account_id)]))
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : Number(b.id) - Number(a.id)))
+      .slice(0, 300).map(t => t.id);
+    if (noCatIds.length === 0) { el.innerHTML = '<div class="empty">Geen uitgaven zonder categorie.</div>'; return; }
+    query = query.in('id', noCatIds).limit(300);
   } else if (searchTerm) {
     // Zoeken doorzoekt bewust de volledige historie, ongeacht maand — maandnavigatie is dan niet van
     // toepassing en verbergt zich; zodra het zoekveld leeg is kom je terug in de maand waar je was.
@@ -5186,6 +5267,16 @@ function renderTxnBudgetCard() {
 // Het formulier heeft veel invoerbronnen (bedrag, soort, categoriekiezer, splitsen, datumkiezer, rekening); in plaats van ze allemaal te
 // koppelen, kijkt een lichte timer elke 300 ms of er iets veranderd is zolang het formulier open staat.
 let txnBudgetWatch = null, txnBudgetSig = '';
+// v3.78: "Bewust zonder categorie" geldt alleen voor een uitgave zonder categorie en zonder splitsing; bij elke andere keuze verdwijnt het vinkje.
+let txnBewustOrigineel = false;
+function updateBewustZichtbaar() {
+  const wrap = document.getElementById('txn-detail-bewust-wrap');
+  if (!wrap) return;
+  const zonderCat = !splitMode && !document.getElementById('txn-detail-category-search').value.trim();
+  const zichtbaar = zonderCat && getAmountType('txn-detail') !== 'income';
+  wrap.style.display = zichtbaar ? 'flex' : 'none';
+  if (!zichtbaar) document.getElementById('txn-detail-bewust').checked = false;
+}
 function txnBudgetSignature() {
   const v = id => (document.getElementById(id) || {}).value;
   return [v('txn-detail-amount'), getAmountType('txn-detail'), v('txn-detail-category-search'), v('txn-detail-date'), v('txn-detail-account'), splitMode, JSON.stringify(splitRows), currentTxnId, budgetRaw && budgetRaw.txns.length].join('|');
@@ -5200,7 +5291,7 @@ function startTxnBudgetWatch() {
       return;
     }
     const sig = txnBudgetSignature();
-    if (sig !== txnBudgetSig) { txnBudgetSig = sig; renderTxnBudgetCard(); }
+    if (sig !== txnBudgetSig) { txnBudgetSig = sig; renderTxnBudgetCard(); updateBewustZichtbaar(); }
   };
   txnBudgetWatch = setInterval(tick, 300);
   tick();
@@ -5250,6 +5341,8 @@ async function openTxnDetail(txnId) {
     setDateValue('txn-detail-date', txn.date);
     document.getElementById('txn-detail-cleared').checked = !!txn.cleared;
     document.getElementById('txn-detail-notitie').value = txn.notitie || '';
+    txnBewustOrigineel = !!txn.bewust_zonder_categorie;
+    document.getElementById('txn-detail-bewust').checked = txnBewustOrigineel;
 
     const { data: receipts } = await sb.from('transaction_receipts').select('*').eq('transaction_id', txnId);
     existingReceipts = receipts || [];
@@ -5282,6 +5375,8 @@ async function openTxnDetail(txnId) {
     setDateValue('txn-detail-date', toLocalISODate(new Date()));
     document.getElementById('txn-detail-cleared').checked = true;
     document.getElementById('txn-detail-notitie').value = '';
+    txnBewustOrigineel = false;
+    document.getElementById('txn-detail-bewust').checked = false;
     exitSplitMode();
     await refreshRecurringMatch(null);
   }
@@ -5363,14 +5458,18 @@ document.getElementById('txn-detail-save-btn').addEventListener('click', async (
     finalizedSplits = splitRows.map(r => ({ category_id: r.category_id, amount: sign * Math.abs(r.amount), notitie: null }));
   }
   const category_id = splitMode ? null : (catLabel ? txnDetailCatLabelToId[catLabel] : null);
+  // De kolom `bewust_zonder_categorie` gaat alleen mee als hij verandert, zodat opslaan ook werkt zolang de kolom nog niet in de database staat.
+  updateBewustZichtbaar();
+  const bewust = !splitMode && !category_id && amount < 0 && document.getElementById('txn-detail-bewust').checked;
+  const bewustVelden = bewust ? { bewust_zonder_categorie: true } : (txnBewustOrigineel ? { bewust_zonder_categorie: false } : {});
 
   let txnId = currentTxnId;
   const isNewTxn = !txnId;
   if (txnId) {
-    const { error } = await sb.from('transactions').update({ account_id, category_id, payee, amount, date, cleared, notitie }).eq('id', txnId);
-    if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
+    const { error } = await sb.from('transactions').update({ account_id, category_id, payee, amount, date, cleared, notitie, ...bewustVelden }).eq('id', txnId);
+    if (error) { console.error(error); alert('Opslaan mislukt.' + (bewustVelden.bewust_zonder_categorie !== undefined && /bewust_zonder_categorie/.test(JSON.stringify(error)) ? ' De kolom voor "Bewust zonder categorie" bestaat nog niet in de database.' : '')); return; }
   } else {
-    const { data, error } = await sb.from('transactions').insert({ account_id, category_id, payee, amount, date, cleared, notitie }).select().single();
+    const { data, error } = await sb.from('transactions').insert({ account_id, category_id, payee, amount, date, cleared, notitie, ...(bewust ? { bewust_zonder_categorie: true } : {}) }).select().single();
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
     txnId = data.id;
   }
