@@ -646,6 +646,7 @@
       <div class="dp-popup" id="zak-txn-date-popup" style="display:none;"></div>
     </div>
     <label style="margin-top:8px;"><input type="checkbox" id="zak-txn-cleared" style="width:auto;"> Bevestigd</label>
+    <div id="zak-txn-cleared-hint" style="display:none; color:#6b6b6b; font-size:12px; margin-top:4px;"></div>
     <div class="modal-footer">
       <div class="actions">
         <button class="btn-cancel" id="zak-txn-cancel">Annuleren</button>
@@ -904,6 +905,7 @@
     <label style="display:flex; align-items:center; gap:6px; margin-top:10px;">
       <input type="checkbox" id="txn-detail-cleared" style="width:auto;"> Bevestigd
     </label>
+    <div id="txn-detail-cleared-hint" style="display:none; color:#6b6b6b; font-size:12px; margin-top:4px;"></div>
     <label style="display:none; align-items:flex-start; gap:6px; margin-top:10px;" id="txn-detail-learn-wrap">
       <input type="checkbox" id="txn-detail-learn" style="width:auto; margin-top:3px;" checked>
       <span>Onthoud voor volgende keer <span id="txn-detail-learn-key" style="color:#6b6b6b; font-size:12px; overflow-wrap:anywhere;"></span></span>
@@ -1048,7 +1050,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.78';
+const APP_VERSION = 'v3.79';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1302,6 +1304,14 @@ const TRANSFER_LEG_WINDOW_DAYS = 3;
 function shiftISODate(iso, days) {
   return new Date(Date.parse(iso + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10);
 }
+
+// v3.79: een nieuwe transactie op een betaalrekening met bankkoppeling begint onbevestigd ('wacht op de bank'). Alleen onbevestigde
+// transacties zijn kandidaat bij 'Koppel aan bestaande'; een zelf ingevoerde, bevestigde transactie stond daar nooit in de lijst.
+// Zelfde regel als bij de andere kant van een overschrijving. Staat ook in BudgetKern (Bevestigdstandaard.swift).
+function defaultClearedForAccount(acc) {
+  return !(acc && acc.type === 'checking' && !!acc.enable_banking_account_uid);
+}
+const CLEARED_HINT_TEKST = 'Op een rekening met bankkoppeling staat dit uit tot de bank de boeking meldt. Dan koppel je ze bij Koppel aan bestaande.';
 
 async function loadAccountsForTransfers() {
   const { data, error } = await sb.from('accounts').select('id, name, scope, type, closed, enable_banking_account_uid').order('name');
@@ -1581,7 +1591,7 @@ async function reconBookTransfer(row, scope, rowEl, key, tSugg, accountsById, bt
   if (!own || !other) { alert('Rekening niet gevonden; ververs de lijst en probeer opnieuw.'); return; }
   btn.disabled = true;
   const outgoing = Number(row.amount) < 0;
-  const otherCleared = !(other.type === 'checking' && !!other.enable_banking_account_uid);
+  const otherCleared = defaultClearedForAccount(other);
   const result = await createTransferPair(
     outgoing ? own : other, outgoing ? other : own, Math.abs(Number(row.amount)), row.date, row.date,
     outgoing ? true : otherCleared, outgoing ? otherCleared : true
@@ -1797,6 +1807,8 @@ async function reconCreateNew(row, scope) {
   setAmountType('txn-detail', Number(row.amount) >= 0 ? 'income' : 'expense');
   setDateValue('txn-detail-date', row.date);
   document.getElementById('txn-detail-cleared').checked = true;
+  txnClearedHandmatig = true; // de bank heeft deze boeking al: het vinkje volgt de rekening hier niet
+  document.getElementById('txn-detail-cleared-hint').style.display = 'none';
   // notitie blijft bewust leeg — gereserveerd voor zijn eigen betekenisvolle aantekeningen,
   // niet voor de ruwe bankomschrijving (die stond hier eerder wel in, expliciet teruggedraaid).
   document.getElementById('txn-detail-notitie').value = '';
@@ -4654,6 +4666,7 @@ function computeNextDate(dateStr, frequency) {
 
 document.getElementById('add-txn-btn').addEventListener('click', () => openTxnDetail(null));
 document.getElementById('zak-add-txn-btn').addEventListener('click', () => openZakTxnModal());
+document.getElementById('zak-txn-account').addEventListener('change', function() { if (!zakClearedHandmatig) applyDefaultCleared('zak-txn', zakTxnAccounts, this.value); });
 
 // ---- Transactions list with click-to-detail ----
 let mainTxnViewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -5317,7 +5330,10 @@ async function openTxnDetail(txnId) {
   }
   const targetScope = txn ? (txn.accounts?.scope || 'prive') : 'prive';
 
-  const { data: accounts } = await sb.from('accounts').select('id, name, scope').eq('scope', targetScope).order('name');
+  const { data: accounts } = await sb.from('accounts').select('id, name, scope, type, enable_banking_account_uid').eq('scope', targetScope).order('name');
+  txnDetailAccounts = accounts || [];
+  txnDetailIsNew = !txn;
+  txnClearedHandmatig = false;
   document.getElementById('txn-detail-account').innerHTML = (accounts || [])
     .map(a => `<option value="${a.id}">${a.name}</option>`).join('');
 
@@ -5340,6 +5356,7 @@ async function openTxnDetail(txnId) {
     setAmountType('txn-detail', Number(txn.amount) >= 0 ? 'income' : 'expense');
     setDateValue('txn-detail-date', txn.date);
     document.getElementById('txn-detail-cleared').checked = !!txn.cleared;
+    document.getElementById('txn-detail-cleared-hint').style.display = 'none';
     document.getElementById('txn-detail-notitie').value = txn.notitie || '';
     txnBewustOrigineel = !!txn.bewust_zonder_categorie;
     document.getElementById('txn-detail-bewust').checked = txnBewustOrigineel;
@@ -5373,7 +5390,7 @@ async function openTxnDetail(txnId) {
     document.getElementById('txn-detail-amount').value = '';
     setAmountType('txn-detail', 'expense');
     setDateValue('txn-detail-date', toLocalISODate(new Date()));
-    document.getElementById('txn-detail-cleared').checked = true;
+    applyDefaultCleared('txn-detail', txnDetailAccounts, defaultAccountId);
     document.getElementById('txn-detail-notitie').value = '';
     txnBewustOrigineel = false;
     document.getElementById('txn-detail-bewust').checked = false;
@@ -5389,7 +5406,22 @@ async function openTxnDetail(txnId) {
   if (!txn) document.getElementById('txn-detail-amount').focus();
 }
 
+// Het vinkje volgt de gekozen rekening, tot de gebruiker er zelf aan zit (een programmatische wijziging van .checked geeft geen 'change').
+let txnDetailAccounts = [], txnDetailIsNew = false, txnClearedHandmatig = false;
+let zakTxnAccounts = [], zakClearedHandmatig = false;
+function applyDefaultCleared(prefix, accountList, accountId) {
+  const acc = (accountList || []).find(a => String(a.id) === String(accountId));
+  const standaard = defaultClearedForAccount(acc);
+  document.getElementById(prefix + '-cleared').checked = standaard;
+  const hint = document.getElementById(prefix + '-cleared-hint');
+  hint.textContent = standaard ? '' : CLEARED_HINT_TEKST;
+  hint.style.display = standaard ? 'none' : 'block';
+}
+document.getElementById('txn-detail-cleared').addEventListener('change', () => { txnClearedHandmatig = true; });
+document.getElementById('zak-txn-cleared').addEventListener('change', () => { zakClearedHandmatig = true; });
+
 document.getElementById('txn-detail-account').addEventListener('change', async function() {
+  if (txnDetailIsNew && !txnClearedHandmatig) applyDefaultCleared('txn-detail', txnDetailAccounts, this.value);
   const { data: acc } = await sb.from('accounts').select('scope').eq('id', this.value).single();
   await refreshTxnDetailCategories(acc?.scope || 'prive', null);
 });
@@ -6497,7 +6529,9 @@ attachCategoryPicker(
 );
 
 async function openZakTxnModal() {
-  const { data: accounts } = await sb.from('accounts').select('id, name').eq('scope', 'zakelijk').order('name');
+  const { data: accounts } = await sb.from('accounts').select('id, name, type, enable_banking_account_uid').eq('scope', 'zakelijk').order('name');
+  zakTxnAccounts = accounts || [];
+  zakClearedHandmatig = false;
   const { tree, leaves } = await buildCategoryData('zakelijk');
   zakCatTree = tree;
   zakCatLeaves = leaves;
@@ -6510,7 +6544,7 @@ async function openZakTxnModal() {
   document.getElementById('zak-txn-amount').value = '';
   setAmountType('zak-txn', 'expense');
   setDateValue('zak-txn-date', toLocalISODate(new Date()));
-  document.getElementById('zak-txn-cleared').checked = true;
+  applyDefaultCleared('zak-txn', zakTxnAccounts, document.getElementById('zak-txn-account').value);
   if (!accounts || accounts.length === 0) {
     alert('Nog geen zakelijke rekening. Voeg er eerst één toe via Supabase (accounts-tabel, type = \'zakelijk\').');
     return;

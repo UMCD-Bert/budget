@@ -76,6 +76,44 @@ window.runBudgetTests = async function (w) {
     click($('txn-detail-close'));
   }
 
+  // --- v3.79: een nieuwe transactie op een betaalrekening met bankkoppeling begint onbevestigd ---
+  {
+    const betaal = w.__db.accounts.find(a => a.id === 1), zaak = w.__db.accounts.find(a => a.id === 3);
+    const wijzig = (el, v) => { el.value = v; el.dispatchEvent(new w.Event('change', { bubbles: true })); };
+    const hintZichtbaar = () => $('txn-detail-cleared-hint').style.display !== 'none' && $('txn-detail-cleared-hint').textContent.includes('bankkoppeling');
+    check('Bevestigd-standaard: de regel (type + koppeling) staat in één functie', w.defaultClearedForAccount({ type: 'checking', enable_banking_account_uid: 'x' }) === false && w.defaultClearedForAccount({ type: 'checking', enable_banking_account_uid: null }) === true
+      && w.defaultClearedForAccount({ type: 'savings', enable_banking_account_uid: 'x' }) === true && w.defaultClearedForAccount(undefined) === true);
+    await w.openTxnDetail(null);
+    check('Bevestigd-standaard: zonder bankkoppeling staat het vinkje aan, zonder hint', $('txn-detail-cleared').checked && !hintZichtbaar());
+    click($('txn-detail-close'));
+    betaal.enable_banking_account_uid = 'tst';
+    await w.openTxnDetail(null);
+    check('Bevestigd-standaard: betaalrekening met bankkoppeling begint onbevestigd, met uitleg', !$('txn-detail-cleared').checked && hintZichtbaar());
+    wijzig($('txn-detail-account'), '2');
+    check('Bevestigd-standaard: wisselen naar een rekening zonder koppeling zet het vinkje aan', $('txn-detail-cleared').checked && !hintZichtbaar());
+    wijzig($('txn-detail-account'), '1');
+    check('Bevestigd-standaard: en terug naar de gekoppelde rekening zet het weer uit', !$('txn-detail-cleared').checked && hintZichtbaar());
+    $('txn-detail-cleared').checked = true; $('txn-detail-cleared').dispatchEvent(new w.Event('change', { bubbles: true }));
+    wijzig($('txn-detail-account'), '2'); wijzig($('txn-detail-account'), '1');
+    check('Bevestigd-standaard: een eigen keuze van de gebruiker blijft staan bij het wisselen van rekening', $('txn-detail-cleared').checked);
+    click($('txn-detail-close'));
+    // Bewerken verandert het vinkje van een bestaande transactie niet.
+    const bestaand = w.__db.transactions.find(t => t.account_id === 1 && t.cleared === true);
+    await w.openTxnDetail(bestaand.id);
+    check('Bevestigd-standaard: een bestaande bevestigde transactie blijft bevestigd bij het bewerken', $('txn-detail-cleared').checked && !hintZichtbaar());
+    click($('txn-detail-close'));
+    // Zakelijk formulier: zelfde regel.
+    zaak.enable_banking_account_uid = 'tst-zak';
+    await w.openZakTxnModal();
+    check('Bevestigd-standaard: ook het zakelijke formulier begint onbevestigd op een gekoppelde betaalrekening', !$('zak-txn-cleared').checked && $('zak-txn-cleared-hint').style.display !== 'none');
+    click($('zak-txn-cancel') || $('zak-txn-modal-bg'));
+    delete zaak.enable_banking_account_uid;
+    await w.openZakTxnModal();
+    check('Bevestigd-standaard: zakelijk zonder koppeling blijft bevestigd', $('zak-txn-cleared').checked && $('zak-txn-cleared-hint').style.display === 'none');
+    click($('zak-txn-cancel') || $('zak-txn-modal-bg'));
+    delete betaal.enable_banking_account_uid;
+  }
+
   // --- Vaste tabbalk onderaan mag geen inhoud verbergen ---
   w.scrollTo(0, 99999);
   await wait(100);
