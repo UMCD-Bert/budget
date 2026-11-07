@@ -240,6 +240,23 @@ window.runBudgetTests = async function (w) {
     houder.remove();
   }
 
+  // --- Bankkaart (v3.80): lijkt de boeking op een bestaande transactie, dan is 'Ja, koppel' de hoofdactie en 'Verwerk als' secundair ---
+  {
+    await w.eval("sb.from('transactions').insert([{ account_id: 1, category_id: 4, payee: 'Kaarttest', amount: -20, date: '2026-09-01', cleared: true }, { account_id: 1, category_id: 4, payee: 'Kaarttest', amount: -50.25, date: '" + raw.todayStr + "', cleared: false }])");
+    w.__db.bank_transactions_staging.push(
+      { id: 'kaart-1', account_id: 1, date: raw.todayStr, amount: -50.25, payee: 'Kaarttest', raw_description: 'Kaarttest', processed_at: null },
+      { id: 'kaart-2', account_id: 1, date: raw.todayStr, amount: -61.10, payee: 'Kaarttest', raw_description: 'Kaarttest', processed_at: null });
+    await w.loadStagingList('prive');
+    await wait(300);
+    const rijen = [...w.document.querySelectorAll('#bank-recon-list-prive .recon-item')];
+    const metKoppel = rijen.find(r => r.querySelector('.recon-link-btn')), zonderKoppel = rijen.find(r => !r.querySelector('.recon-link-btn'));
+    check('Bankkaart: bij een gelijkende transactie is Verwerk als secundair (btn-cancel)', !!metKoppel && !!metKoppel.querySelector('.recon-quick-btn.btn-cancel') && !metKoppel.querySelector('.recon-quick-btn.btn-save'), `${rijen.length} rijen`);
+    check('Bankkaart: zonder gelijkende transactie blijft Verwerk als de hoofdactie (btn-save)', !!zonderKoppel && !!zonderKoppel.querySelector('.recon-quick-btn.btn-save'), `${rijen.length} rijen`);
+    w.__db.bank_transactions_staging.length = 0;
+    w.__db.transactions = w.__db.transactions.filter(t => t.payee !== 'Kaarttest');
+    w.document.getElementById('bank-recon-list-prive').innerHTML = '';
+  }
+
   // --- Bankkoppelingen: tot wanneer geldt een koppeling, en welke bank is verlopen (v3.77) ---
   {
     check('Koppeling: de naam krijgt de bank erbij, tenzij die er al in staat',

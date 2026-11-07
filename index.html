@@ -1050,7 +1050,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.79';
+const APP_VERSION = 'v3.80';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1497,8 +1497,9 @@ async function loadStagingList(scope) {
       </div>`;
     }
 
+    // Lijkt de boeking op een bestaande transactie, dan is 'Ja, koppel' de hoofdactie; de grote 'Verwerk als'-knop wordt dan secundair (kans op dubbel boeken).
     const quickHtml = sugg.categoryId
-      ? `<button class="btn-save recon-quick-btn" style="padding:4px 8px; font-size:12px; text-align:left; max-width:100%; overflow-wrap:anywhere;">✓ Verwerk als ${escapeHtml(sugg.name)} · ${escapeHtml(shortCat)}</button>`
+      ? `<button class="${match ? 'btn-cancel' : 'btn-save'} recon-quick-btn" style="padding:4px 8px; font-size:12px; text-align:left; max-width:100%; overflow-wrap:anywhere;">✓ Verwerk als ${escapeHtml(sugg.name)} · ${escapeHtml(shortCat)}</button>`
       : '';
     const toggleHtml = (!pairRow && !tSugg)
       ? '<button class="btn-save recon-transfer-toggle" style="padding:4px 8px; font-size:12px;">⇄ Overschrijving</button>'
