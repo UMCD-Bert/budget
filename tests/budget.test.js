@@ -257,6 +257,37 @@ window.runBudgetTests = async function (w) {
     w.document.getElementById('bank-recon-list-prive').innerHTML = '';
   }
 
+  // --- Koppelvoorstel bij een licht afwijkend bedrag (v3.81): premies en abonnementen worden duurder ---
+  {
+    const rij = { id: 'p1', account_id: 1, date: '2026-11-05', amount: -72.45, payee: 'VERZEKERAAR NOORD', raw_description: 'Prolongatie 05-11-2026' };
+    const kand = (id, payee, amount, date, extra) => Object.assign({ id, account_id: 1, date: date || '2026-11-03', payee, amount, link_type: null }, extra || {});
+    const m1 = w.findBankMatches([rij], [kand(1, 'Verzekeraar Noord premie', -66.75)]).get('p1');
+    check('Koppelvoorstel: een verhoogde premie (+8,5%) met dezelfde naam wordt voorgesteld, als afwijkend bedrag', !!m1 && m1.cand.id === 1 && m1.inexact === true, JSON.stringify(m1 && { id: m1.cand.id, inexact: m1.inexact }));
+    const m2 = w.findBankMatches([rij], [kand(1, 'Verzekeraar Noord premie', -66.75), kand(2, 'Verzekeraar Noord auto', -72.45)]).get('p1');
+    check('Koppelvoorstel: bij evenveel naam-overlap gaat een exact bedrag voor een afwijkend bedrag', !!m2 && m2.cand.id === 2 && m2.inexact === false, JSON.stringify(m2 && { id: m2.cand.id }));
+    const m2b = w.findBankMatches([rij], [kand(1, 'Verzekeraar Noord premie', -66.75), kand(2, 'Iets anders', -72.45)]).get('p1');
+    check('Koppelvoorstel: een afwijkend bedrag met dezelfde naam gaat voor een exact bedrag met een andere naam', !!m2b && m2b.cand.id === 1 && m2b.inexact === true, JSON.stringify(m2b && { id: m2b.cand.id }));
+    check('Koppelvoorstel: een afwijkend bedrag zonder overlap in de naam wordt niet voorgesteld', w.findBankMatches([rij], [kand(1, 'Boodschappen', -66.75)]).size === 0);
+    check('Koppelvoorstel: meer dan 25% verschil wordt niet voorgesteld', w.findBankMatches([rij], [kand(1, 'Verzekeraar Noord', -150)]).size === 0);
+    check('Koppelvoorstel: een ander teken wordt niet voorgesteld', w.findBankMatches([rij], [kand(1, 'Verzekeraar Noord', 66.75)]).size === 0);
+    check('Koppelvoorstel: een overschrijving moet exact kloppen', w.findBankMatches([rij], [kand(1, 'Verzekeraar Noord', -66.75, '2026-11-03', { link_type: 'transfer' })]).size === 0);
+    check('Koppelvoorstel: andere rekening en te ver weg tellen niet', w.findBankMatches([rij], [kand(1, 'Verzekeraar Noord', -66.75, '2026-11-03', { account_id: 2 }), kand(2, 'Verzekeraar Noord', -66.75, '2026-10-01')]).size === 0);
+    const m3 = w.findBankMatches([rij], [kand(1, 'Verzekeraar Noord', -66.75), kand(2, 'Verzekeraar Noord auto', -68)]).get('p1');
+    check('Koppelvoorstel: bij twee afwijkende kandidaten telt de ander als vergelijkbaar', !!m3 && m3.others === 1 && m3.inexact === true, JSON.stringify(m3 && { others: m3.others }));
+
+    await w.eval("sb.from('transactions').insert([{ account_id: 1, category_id: 4, payee: 'Premietest', amount: -66.75, date: '" + raw.todayStr + "', cleared: false }])");
+    w.__db.bank_transactions_staging.push({ id: 'premie-1', account_id: 1, date: raw.todayStr, amount: -72.45, payee: 'PREMIETEST NV', raw_description: 'Prolongatie', processed_at: null });
+    await w.loadStagingList('prive');
+    await wait(300);
+    const kaart = w.document.querySelector('#bank-recon-list-prive .recon-item');
+    const knop = kaart && kaart.querySelector('.recon-link-btn');
+    check('Bankkaart: bij een afwijkend bedrag staat het verschil op de kaart en heet de knop "Ja, koppel en pas bedrag aan"',
+      !!knop && knop.textContent === 'Ja, koppel en pas bedrag aan' && /de bank meldt/.test(kaart.textContent) && /5,70/.test(kaart.textContent), knop ? knop.textContent + ' | ' + kaart.textContent.slice(0, 200) : 'geen kaart');
+    w.__db.bank_transactions_staging.length = 0;
+    w.__db.transactions = w.__db.transactions.filter(t => t.payee !== 'Premietest');
+    w.document.getElementById('bank-recon-list-prive').innerHTML = '';
+  }
+
   // --- Bankkoppelingen: tot wanneer geldt een koppeling, en welke bank is verlopen (v3.77) ---
   {
     check('Koppeling: de naam krijgt de bank erbij, tenzij die er al in staat',

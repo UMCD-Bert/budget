@@ -1050,7 +1050,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.80';
+const APP_VERSION = 'v3.81';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1164,6 +1164,8 @@ async function refreshBankReconciliation(scope) {
 // dezelfde naam), en een niet-geclearde transactie met hetzelfde bedrag wordt als koppel-voorstel
 // getoond. Niets hiervan schrijft stilzwijgend: elke actie blijft een expliciete tik.
 const RECON_MATCH_WINDOW_DAYS = 10;
+// v3.81: een bankboeking mag ook bij een onbevestigde transactie met een licht ander bedrag voorgesteld worden (prijsverhoging van een abonnement of premie), mits de naam overlapt.
+const RECON_MATCH_TOLERANCE = 0.25;
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
@@ -1262,9 +1264,11 @@ function dayDiff(a, b) {
   return Math.abs(Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86400000));
 }
 
-// Koppel-voorstel per bankrij: zelfde rekening, exact hetzelfde bedrag (met teken), datum binnen
-// RECON_MATCH_WINDOW_DAYS. Beste paren eerst (naam-overlap weegt zwaarder dan datum-afstand); een
-// transactie wordt aan maximaal één bankrij voorgesteld. Return: Map(rij-id -> { cand, others, overlap }).
+// Koppel-voorstel per bankrij: zelfde rekening, datum binnen RECON_MATCH_WINDOW_DAYS en hetzelfde bedrag (met teken). Sinds v3.81 telt ook
+// een licht afwijkend bedrag (zelfde teken, hoogstens RECON_MATCH_TOLERANCE verschil) als de naam overlapt: verzekeringen en abonnementen
+// worden regelmatig duurder. Een overschrijving moet altijd exact kloppen. Beste paren eerst (naam-overlap weegt zwaarder dan datum-afstand;
+// bij evenveel overlap gaat een exact bedrag voor een afwijkend bedrag); een transactie wordt aan maximaal één bankrij voorgesteld.
+// Return: Map(rij-id -> { cand, others, overlap, inexact }); `others` telt alleen kandidaten van dezelfde soort (exact of afwijkend).
 function findBankMatches(rows, uncleared) {
   const pairs = [];
   const perRow = new Map();
@@ -1273,12 +1277,19 @@ function findBankMatches(rows, uncleared) {
     const rowTokens = new Set(tokenizeName(label));
     uncleared.forEach(c => {
       if (c.account_id !== row.account_id) return;
-      if (Math.abs(Number(c.amount) - Number(row.amount)) >= 0.005) return;
+      const a = Number(c.amount), b = Number(row.amount);
+      const exact = Math.abs(a - b) < 0.005;
+      if (!exact) {
+        if (isTransferCandidate(c) || a === 0 || b === 0 || (a < 0) !== (b < 0)) return;
+        if (Math.abs(a - b) > RECON_MATCH_TOLERANCE * Math.max(Math.abs(a), Math.abs(b)) + 1e-9) return;
+      }
       const dd = dayDiff(c.date, row.date);
       if (dd > (c.maxDays || RECON_MATCH_WINDOW_DAYS)) return;
       const overlap = tokenizeName(c.payee).filter(t => rowTokens.has(t)).length;
-      pairs.push({ row, cand: c, overlap, score: Math.min(overlap, 3) * 100 - dd });
-      perRow.set(row.id, (perRow.get(row.id) || 0) + 1);
+      if (!exact && overlap === 0) return;
+      pairs.push({ row, cand: c, overlap, inexact: !exact, score: Math.min(overlap, 3) * 100 - dd - (exact ? 0 : 150) });
+      const key = row.id + (exact ? '=' : '~');
+      perRow.set(key, (perRow.get(key) || 0) + 1);
     });
   });
   pairs.sort((x, y) => y.score - x.score);
@@ -1287,7 +1298,7 @@ function findBankMatches(rows, uncleared) {
     if (usedRows.has(p.row.id) || usedCands.has(p.cand.id)) return;
     usedRows.add(p.row.id);
     usedCands.add(p.cand.id);
-    result.set(p.row.id, { cand: p.cand, others: perRow.get(p.row.id) - 1, overlap: p.overlap });
+    result.set(p.row.id, { cand: p.cand, others: perRow.get(p.row.id + (p.inexact ? '~' : '=')) - 1, overlap: p.overlap, inexact: p.inexact });
   });
   return result;
 }
@@ -1468,12 +1479,14 @@ async function loadStagingList(scope) {
 
     let matchHtml = '';
     if (match) {
-      const extra = (match.others > 0 ? ` <span style="color:#6b6b6b;">(+${match.others} andere met hetzelfde bedrag)</span>` : '')
-        + (!isTransferCandidate(match.cand) && match.overlap === 0 ? ' <span style="color:#6b6b6b;">(andere naam)</span>' : '');
+      const diff = Number(row.amount) - Number(match.cand.amount);
+      const extra = (match.others > 0 ? ` <span style="color:#6b6b6b;">(+${match.others} andere ${match.inexact ? 'vergelijkbare' : 'met hetzelfde bedrag'})</span>` : '')
+        + (!isTransferCandidate(match.cand) && match.overlap === 0 ? ' <span style="color:#6b6b6b;">(andere naam)</span>' : '')
+        + (match.inexact ? ` <span style="color:#6b6b6b;">— de bank meldt ${nbEuro(row.amount)} (${diff > 0 ? '+' : '−'}${formatEuro(Math.abs(diff)).replace(' ', ' ')})</span>` : '');
       matchHtml = `
       <div style="${boxStyle}">
         <span style="min-width:0; overflow-wrap:anywhere;">🔁 Lijkt op${isTransferCandidate(match.cand) ? ' jouw overschrijving' : ''}: <b>${escapeHtml(match.cand.payee || '(geen payee)')}</b>, ${formatDateNL(match.cand.date)}, ${nbEuro(match.cand.amount)}${extra}</span>
-        <button class="btn-save recon-link-btn" style="padding:4px 8px; font-size:12px; white-space:nowrap; flex-shrink:0;">Ja, koppel</button>
+        <button class="btn-save recon-link-btn" style="padding:4px 8px; font-size:12px; ${match.inexact ? '' : 'white-space:nowrap; '}flex-shrink:0;">${match.inexact ? 'Ja, koppel en pas bedrag aan' : 'Ja, koppel'}</button>
       </div>`;
     }
 
@@ -1524,7 +1537,7 @@ async function loadStagingList(scope) {
     div.querySelector('.recon-new-btn').addEventListener('click', () => reconCreateNew(row, scope));
     div.querySelector('.recon-existing-btn').addEventListener('click', () => reconToggleExistingList(row, div, scope));
     div.querySelector('.recon-ignore-btn').addEventListener('click', () => reconIgnoreRow(row.id, scope));
-    if (match) div.querySelector('.recon-link-btn').addEventListener('click', (e) => reconLinkMatch(row, match.cand, scope, e.currentTarget));
+    if (match) div.querySelector('.recon-link-btn').addEventListener('click', (e) => match.inexact ? reconOpenLinkForm(row, match.cand.id, scope) : reconLinkMatch(row, match.cand, scope, e.currentTarget));
     if (sugg.categoryId) div.querySelector('.recon-quick-btn').addEventListener('click', (e) => reconQuickProcess(row, scope, sugg, e.currentTarget));
     if (pairRow) {
       div.querySelector('.recon-pair-btn').addEventListener('click', (e) => reconBookPair(row, pairRow, scope, accountsById, e.currentTarget));
@@ -1821,6 +1834,17 @@ async function reconCreateNew(row, scope) {
   document.getElementById('txn-detail-learn-wrap').style.display = 'flex';
 }
 
+// Opent de transactie in het formulier, voorgevuld met de gegevens van de bank (bevestigd, datum en bedrag); bewaren koppelt de bankboeking.
+async function reconOpenLinkForm(row, txnId, scope) {
+  await openTxnDetail(txnId);
+  document.getElementById('txn-detail-cleared').checked = true;
+  setDateValue('txn-detail-date', row.date); // de bankdatum is de waarheid
+  document.getElementById('txn-detail-amount').value = Math.abs(Number(row.amount)).toFixed(2); // ... en het bankbedrag ook
+  setAmountType('txn-detail', Number(row.amount) >= 0 ? 'income' : 'expense');
+  pendingStagingClearId = row.id;
+  pendingStagingClearScope = scope;
+}
+
 async function reconToggleExistingList(row, containerDiv, scope) {
   const listDiv = containerDiv.querySelector('.recon-existing-list');
   if (listDiv.style.display === 'block') { listDiv.style.display = 'none'; return; }
@@ -1839,15 +1863,7 @@ async function reconToggleExistingList(row, containerDiv, scope) {
       btn.className = 'btn-save';
       btn.style.cssText = 'display:block; width:100%; text-align:left; margin:2px 0; padding:4px 8px; font-size:12px;' + (sameAmount ? ' border:2px solid var(--green);' : '');
       btn.textContent = c.date + ' — ' + (c.payee || '(geen payee)') + ' — ' + formatEuro(c.amount) + (sameAmount ? ' ✓ zelfde bedrag' : '');
-      btn.addEventListener('click', async () => {
-        await openTxnDetail(c.id);
-        document.getElementById('txn-detail-cleared').checked = true;
-        setDateValue('txn-detail-date', row.date); // de bankdatum is de waarheid
-        document.getElementById('txn-detail-amount').value = Math.abs(Number(row.amount)).toFixed(2); // ... en het bankbedrag ook
-        setAmountType('txn-detail', Number(row.amount) >= 0 ? 'income' : 'expense');
-        pendingStagingClearId = row.id;
-        pendingStagingClearScope = scope;
-      });
+      btn.addEventListener('click', () => reconOpenLinkForm(row, c.id, scope));
       listDiv.appendChild(btn);
     });
   }
