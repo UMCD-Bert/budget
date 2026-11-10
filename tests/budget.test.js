@@ -288,6 +288,47 @@ window.runBudgetTests = async function (w) {
     w.document.getElementById('bank-recon-list-prive').innerHTML = '';
   }
 
+  // --- Dubbelcontrole bij een nieuwe transactie (v3.82): dezelfde boeking staat al op een andere rekening ---
+  {
+    const accs = [{ id: 1, name: 'Betaal', scope: 'prive' }, { id: 2, name: 'Visa', scope: 'prive' }, { id: 3, name: 'Zaak', scope: 'zakelijk' }];
+    const t = (id, acc, payee, amount, date, extra) => Object.assign({ id, account_id: acc, payee, amount, date, link_type: null }, extra || {});
+    const vind = (nieuw, rijen) => w.findDuplicateTxn(Object.assign({ account_id: 2, payee: 'iTunes', amount: -10.99, date: '2026-11-03' }, nieuw), rijen, accs);
+    check('Dubbelcontrole: zelfde naam en bedrag op een andere rekening wordt gevonden', (vind({}, [t(10, 1, 'iTunes', -10.99, '2026-11-04')]) || {}).id === 10);
+    check('Dubbelcontrole: dezelfde rekening telt niet', vind({}, [t(10, 2, 'iTunes', -10.99, '2026-11-03')]) === null);
+    check('Dubbelcontrole: ander bedrag, andere naam of meer dan 5 dagen verschil telt niet',
+      vind({}, [t(10, 1, 'iTunes', -9.99, '2026-11-03')]) === null && vind({}, [t(10, 1, 'Bioscoop', -10.99, '2026-11-03')]) === null && vind({}, [t(10, 1, 'iTunes', -10.99, '2026-11-09')]) === null && !!vind({}, [t(10, 1, 'iTunes', -10.99, '2026-11-08')]));
+    check('Dubbelcontrole: andere scope, overschrijving en lege naam tellen niet',
+      vind({ account_id: 3 }, [t(10, 1, 'iTunes', -10.99, '2026-11-03')]) === null && vind({}, [t(10, 1, 'iTunes', -10.99, '2026-11-03', { link_type: 'transfer' })]) === null && vind({ payee: '' }, [t(10, 1, '', -10.99, '2026-11-03')]) === null);
+    check('Dubbelcontrole: de beste treffer wint (dichtstbij in tijd)', (vind({}, [t(10, 1, 'iTunes Store', -10.99, '2026-11-07'), t(11, 1, 'iTunes Store', -10.99, '2026-11-04')]) || {}).id === 11);
+
+    // Via het formulier: eerst een vraag, "nee" slaat niets op, "ja" slaat wel op.
+    const vandaag = w.eval('toLocalISODate(new Date())');
+    w.__db.transactions.push({ id: 99001, account_id: 1, category_id: 4, payee: 'Pizzeria', amount: -17.5, date: vandaag, cleared: true, link_type: null });
+    const aantal = () => w.__db.transactions.filter(x => x.payee === 'Pizzeria').length;
+    const vragen = [];
+    const origineleConfirm = w.confirm;
+    let antwoord = false;
+    w.confirm = tekst => { vragen.push(tekst); return antwoord; };
+    await w.openTxnDetail(null);
+    $('txn-detail-account').value = '2'; $('txn-detail-account').dispatchEvent(new w.Event('change', { bubbles: true }));
+    $('txn-detail-payee').value = 'Pizzeria'; $('txn-detail-amount').value = '17.5';
+    await wait(300);
+    click($('txn-detail-save-btn')); await wait(800);
+    check('Dubbelcontrole formulier: bij een dubbele boeking komt eerst een vraag met de andere rekening', vragen.length === 1 && vragen[0].includes('Betaal') && vragen[0].includes('Pizzeria'), vragen[0]);
+    check('Dubbelcontrole formulier: "nee" slaat niets op', aantal() === 1);
+    antwoord = true;
+    click($('txn-detail-save-btn')); await wait(1200);
+    check('Dubbelcontrole formulier: "ja" slaat hem toch op', aantal() === 2 && vragen.length === 2, aantal() + ' / ' + vragen.length);
+    // Zonder gelijkende boeking geen vraag.
+    await w.openTxnDetail(null);
+    $('txn-detail-payee').value = 'Heel iets anders'; $('txn-detail-amount').value = '3.21';
+    await wait(300);
+    click($('txn-detail-save-btn')); await wait(1200);
+    check('Dubbelcontrole formulier: een gewone nieuwe transactie krijgt geen vraag', vragen.length === 2);
+    w.confirm = origineleConfirm;
+    w.__db.transactions = w.__db.transactions.filter(x => x.payee !== 'Pizzeria' && x.payee !== 'Heel iets anders');
+  }
+
   // --- Bankkoppelingen: tot wanneer geldt een koppeling, en welke bank is verlopen (v3.77) ---
   {
     check('Koppeling: de naam krijgt de bank erbij, tenzij die er al in staat',

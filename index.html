@@ -1050,7 +1050,7 @@ function hideOfflineBanner() {
   if (el) el.classList.remove('show');
 }
 
-const APP_VERSION = 'v3.81';
+const APP_VERSION = 'v3.82';
 document.getElementById('version').textContent = APP_VERSION;
 
 // ---- Bankkoppelingen (Enable Banking) ----
@@ -1166,6 +1166,8 @@ async function refreshBankReconciliation(scope) {
 const RECON_MATCH_WINDOW_DAYS = 10;
 // v3.81: een bankboeking mag ook bij een onbevestigde transactie met een licht ander bedrag voorgesteld worden (prijsverhoging van een abonnement of premie), mits de naam overlapt.
 const RECON_MATCH_TOLERANCE = 0.25;
+// v3.82: een nieuwe transactie die er (zelfde naam-woord, exact bedrag) binnen zoveel dagen al op een ándere rekening van dezelfde scope staat, vraagt eerst om bevestiging.
+const DUPLICATE_WINDOW_DAYS = 5;
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
@@ -1262,6 +1264,29 @@ function tokenizeName(s) { return String(s || '').toLowerCase().match(/[\p{L}\p{
 
 function dayDiff(a, b) {
   return Math.abs(Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86400000));
+}
+
+// v3.82: de meest gelijkende bestaande transactie op een andere rekening van dezelfde scope (exact bedrag, naam met minstens één gemeenschappelijk woord,
+// datum binnen DUPLICATE_WINDOW_DAYS). Overschrijvingen (link_type) en een bedrag van nul tellen niet mee; dezelfde rekening ook niet. Staat ook in
+// BudgetKern (Dubbelcontrole.vind); verandert de regel, pas dan beide aan.
+function findDuplicateTxn(nieuw, ledger, accountList) {
+  const eigen = (accountList || []).find(a => String(a.id) === String(nieuw.account_id));
+  const tokens = new Set(tokenizeName(nieuw.payee));
+  if (!eigen || !tokens.size || !(Math.abs(nieuw.amount) > 0)) return null;
+  const scopeVan = id => (accountList.find(a => String(a.id) === String(id)) || {}).scope;
+  let best = null;
+  (ledger || []).forEach(t => {
+    if (String(t.account_id) === String(nieuw.account_id) || t.link_type) return;
+    if (Math.abs(Number(t.amount) - nieuw.amount) >= 0.005) return;
+    if (scopeVan(t.account_id) !== eigen.scope) return;
+    const dd = dayDiff(t.date, nieuw.date);
+    if (dd > DUPLICATE_WINDOW_DAYS) return;
+    const overlap = tokenizeName(t.payee).filter(x => tokens.has(x)).length;
+    if (!overlap) return;
+    const score = Math.min(overlap, 3) * 100 - dd;
+    if (!best || score > best.score) best = { t, score };
+  });
+  return best ? best.t : null;
 }
 
 // Koppel-voorstel per bankrij: zelfde rekening, datum binnen RECON_MATCH_WINDOW_DAYS en hetzelfde bedrag (met teken). Sinds v3.81 telt ook
@@ -5518,6 +5543,13 @@ document.getElementById('txn-detail-save-btn').addEventListener('click', async (
     const { error } = await sb.from('transactions').update({ account_id, category_id, payee, amount, date, cleared, notitie, ...bewustVelden }).eq('id', txnId);
     if (error) { console.error(error); alert('Opslaan mislukt.' + (bewustVelden.bewust_zonder_categorie !== undefined && /bewust_zonder_categorie/.test(JSON.stringify(error)) ? ' De kolom voor "Bewust zonder categorie" bestaat nog niet in de database.' : '')); return; }
   } else {
+    // v3.82: staat dezelfde boeking al op een andere rekening? Dan eerst vragen (voorkomt dubbel boeken, bijv. iTunes op ASN én Visa).
+    const { data: ledgerRows } = await getLedger();
+    const dubbel = findDuplicateTxn({ account_id, payee, amount, date }, ledgerRows, txnDetailAccounts);
+    if (dubbel) {
+      const andereRekening = (txnDetailAccounts.find(a => String(a.id) === String(dubbel.account_id)) || {}).name || 'een andere rekening';
+      if (!confirm(`${dubbel.payee || 'Deze boeking'} ${formatEuro(Number(dubbel.amount))} staat al op ${andereRekening} (${dubbel.date}).\n\nSla je hem toch op, dan staat hij twee keer in je overzicht. Toch opslaan?`)) return;
+    }
     const { data, error } = await sb.from('transactions').insert({ account_id, category_id, payee, amount, date, cleared, notitie, ...(bewust ? { bewust_zonder_categorie: true } : {}) }).select().single();
     if (error) { console.error(error); alert('Opslaan mislukt.'); return; }
     txnId = data.id;
